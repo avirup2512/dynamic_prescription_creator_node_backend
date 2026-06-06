@@ -48,8 +48,8 @@ class TemplateController extends BaseController<Template> {
 
   async update(req: Request, res: Response) {
     const id = req.params.id as string;
-    const data = req.body;
-    if (data?.data) {
+    const data = req.body.data;
+    if (data) {
       try {
         const service = this.service as typeof TemplateService;
         const result = await service.updateTemplate(id, data);
@@ -57,8 +57,9 @@ class TemplateController extends BaseController<Template> {
       } catch (error) {
         return res.status(500).json({ success: false, error: "Failed to update template", details: error instanceof Error ? error.message : error });
       }
+    }else {
+      return res.status(400).json({ success: false, error: "No data provided for update" });
     }
-    return super.update(req, res);
   }
 
   async remove(req: Request, res: Response) {

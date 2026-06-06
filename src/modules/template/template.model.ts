@@ -180,18 +180,20 @@ export class TemplateModel extends BaseModel<Template> {
       await client.query("BEGIN");
 
       const updateData: Record<string, any> = {};
-      if (typeof data.name === "string") updateData.name = data.name;
-      if (typeof data.user_id === "string") updateData.created_by = data.user_id;
-      if (typeof data.created_by === "string") updateData.created_by = data.created_by;
-      if (typeof data.is_deleted === "number") updateData.is_deleted = data.is_deleted;
+      updateData.name = data.name || "";
+      updateData.created_by = data.user_id || "9a6246f4-be76-4eda-9eef-f26e5c40a300";
+      updateData.created_by = data.created_by || "9a6246f4-be76-4eda-9eef-f26e5c40a300";
+      updateData.is_deleted = data.is_deleted ?? 0;
       const templateUpdateQuery = `UPDATE templates SET name = $1, created_by = $2, is_deleted = $3 WHERE id = $4 RETURNING *`;
+      console.log(data);
       const templateResult = await client.query(templateUpdateQuery, [updateData.name, updateData.created_by, updateData.is_deleted, id]);
       const updatedTemplate = templateResult.rows[0];
       const processedIds = { rows: new Set<string>(), columns: new Set<string>(), inputs: new Set<string>() };
       const inputTypeUuidCache: Record<string, string> = {};
       for (let x in data) {
-        if (data[x].id) {
-          await this.updateTemplateSection(client, updatedTemplate.id, data[x].id, data[x], x, inputTypeUuidCache, processedIds);
+        if (data[x].section_id) {
+          console.log(`Updating section ${x} with ID ${data[x].section_id}`);
+          await this.updateTemplateSection(client, updatedTemplate.id, data[x].section_id, data[x], x, inputTypeUuidCache, processedIds);
         }
       }
       await client.query("COMMIT");
@@ -205,7 +207,7 @@ export class TemplateModel extends BaseModel<Template> {
         client.release();
       }
     }
-        private async updateTemplateSection(client: any,
+    private async updateTemplateSection(client: any,
         templateId: string,
         sectionId: Partial<any>,
         data: any,
@@ -229,13 +231,15 @@ export class TemplateModel extends BaseModel<Template> {
       inputTypeUuidCache: Record<string, string>,
       processedIds:any
     ) {
+      console.log(row);
       const updateRowQuery = `UPDATE template_rows SET name = $1, row_order = $2 WHERE id = $3 RETURNING *`;
-      const rowResult = await client.query(updateRowQuery, [row?.name ?? "", row?.row_order ?? 0, row?.id]);
-      const insertedRow = rowResult.rows[0];
-      if (processedIds) processedIds.rows.add(insertedRow.id);
+      const rowResult = await client.query(updateRowQuery, [row?.name ?? "", row?.row_order ?? 0, row?.id || row?.template_row_id]);
+      console.log(await rowResult);
+      const updatedRow = rowResult.rows[0];
+      if (processedIds) processedIds.rows.add(updatedRow.id);
   
       const updateSectionRowsQuery = `UPDATE template_section_rows SET section_id = $1, row_id = $2 WHERE section_id = $3 AND row_id = $4 RETURNING *`;
-      await client.query(updateSectionRowsQuery, [sectionId, insertedRow.id, sectionId, row?.id]);
+      await client.query(updateSectionRowsQuery, [sectionId, updatedRow.id, sectionId, row?.id]);
   
       const columns = Array.isArray(row?.column)
         ? row.column
@@ -243,7 +247,7 @@ export class TemplateModel extends BaseModel<Template> {
           ? row.columns
           : [];
       for (const col of columns) {
-        await this.updateColumnWithInputs(client, insertedRow.id, col,inputTypeUuidCache, processedIds);
+        await this.updateColumnWithInputs(client, updatedRow.id, col,inputTypeUuidCache, processedIds);
       }
   }
   private async updateColumnWithInputs(
@@ -253,17 +257,18 @@ export class TemplateModel extends BaseModel<Template> {
       inputTypeUuidCache: Record<string, string>,
       processedIds?: any
     ) {
+      console.log(col);
       const updateColumnQuery = `UPDATE template_columns SET name = $1, width = $2, column_order = $3 WHERE id = $4 RETURNING *`;
-      const columnResult = await client.query(updateColumnQuery, [col?.name ?? "", Math.ceil(col?.width ?? 100), col?.column_order ?? 0, col?.id]);
-      const insertedColumn = columnResult.rows[0];
-      if (processedIds) processedIds.columns.add(insertedColumn.id);
+      const columnResult = await client.query(updateColumnQuery, [col?.name ?? "", Math.ceil(col?.width ?? 100), col?.column_order ?? 0, col?.id || col?.column_id]);
+      const updatedColumn = columnResult.rows[0];
+      if (processedIds) processedIds.columns.add(updatedColumn.id);
   
       const updateRowColumnQuery = `UPDATE template_rows_columns SET column_id = $1, row_id = $2 WHERE column_id = $3 AND row_id = $4 RETURNING *`;
-      await client.query(updateRowColumnQuery, [insertedColumn.id, rowId, col?.id, rowId]);
+      await client.query(updateRowColumnQuery, [updatedColumn.id, rowId, col?.id, rowId]);
   
       const inputs = Array.isArray(col?.inputs) ? col.inputs : [];
       for (const input of inputs) {
-        await this.updateInputForColumn(client, insertedColumn.id, input,inputTypeUuidCache, processedIds);
+        await this.updateInputForColumn(client, updatedColumn.id, input,inputTypeUuidCache, processedIds);
       }
   }
   private async updateInputForColumn(
@@ -298,15 +303,15 @@ export class TemplateModel extends BaseModel<Template> {
         input?.font_size ?? 14,
         input?.extra_note ?? 0,
         input?.is_deleted ?? 0,
-        input?.id
+        input?.input_id || input?.id
       ]);
       const insertedInput = inputResult.rows[0];
       if (processedIds) processedIds.inputs.add(insertedInput.id);
-  
+      console.log(input);
       const updateColumnInputQuery = `UPDATE template_column_inputs SET column_id = $1, input_id = $2 WHERE column_id = $3 AND input_id = $4 RETURNING *`;
       await client.query(updateColumnInputQuery, [columnId, insertedInput.id, columnId, insertedInput.id]);
       const updateInputValueQuery = `UPDATE template_inputs_value SET value = $2 WHERE template_input_id = $1 RETURNING *`;
-    await client.query(updateInputValueQuery, [insertedInput.id, input?.input_entity_value ?? ""]);
+    await client.query(updateInputValueQuery, [insertedInput.id, input?.template_input_value ?? ""]);
       if (input?.dropdown_option_id)
       {
         const updateDropdownOptionQuery = `UPDATE dropdown_entity_values SET input_entity_id = $1, option_id = $2 WHERE input_entity_id = $3 AND option_id = $4 RETURNING *`;
@@ -460,10 +465,13 @@ export class TemplateModel extends BaseModel<Template> {
         };
         if(item.is_header) {
           templateData.header.rows.push(rowMap[rowId]);
+          templateData.header.section_id = item.section_id;
         } else if(item.is_body) {
           templateData.body.rows.push(rowMap[rowId]);
+          templateData.body.section_id = item.section_id;
         } else if(item.is_footer) {
           templateData.footer.rows.push(rowMap[rowId]);
+          templateData.footer.section_id = item.section_id;
         }
         // templateData.sections.push(rowMap[rowId]);
       }

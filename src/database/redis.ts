@@ -3,7 +3,7 @@ import { config } from "../config";
 
 export const redisClient = createClient({
     socket: {
-    host: process.env.REDIS_HOST || "localhost",
+    host: process.env.REDIS_HOST || "freelancecollab.com",
     port: process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379,
   },
   password: process.env.REDIS_PASSWORD || 'thlukumar',

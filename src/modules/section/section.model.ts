@@ -125,10 +125,16 @@ export class SectionModel extends BaseModel<Section> {
     await client.query(addColumnInputQuery, [columnId, insertedInput.id]);
   }
   async getAllSections(filters: Record<string, unknown> = {}) {
-    const sql = `SELECT * FROM sections ie  WHERE (created_by IS NULL OR ie.created_by = $1) AND ie.is_deleted = 0 ORDER BY created_at DESC`;
-    const params = [filters.user_id || "9a6246f4-be76-4eda-9eef-f26e5c40a300"];
-    const result = await query<any>(sql, params);
-    return result;
+    try {
+      const sql = `SELECT * FROM sections ie  WHERE (created_by IS NULL OR ie.created_by = $1) AND ie.is_deleted = 0 ORDER BY created_at DESC`;
+      const params = [filters.user_id || "9a6246f4-be76-4eda-9eef-f26e5c40a300"];
+      console.log(sql, params);
+      const result = await query<any>(sql, params);
+      return result;
+    } catch (error) {
+      console.error("Error fetching sections:", error);
+      throw error;
+    }
   }
   async updateSection(sectionId: string, data: Partial<any>) {
   const client = await pool.connect();
@@ -430,6 +436,7 @@ private async deleteInput(client: any, inputId: string) {
                  WHERE sec.id = $1 AND sec.is_deleted = 0
                  ORDER BY row.row_order NULLS LAST, col.column_order NULLS LAST, i.input_order NULLS LAST`;
     const params = [id];
+    console.log(sql)
     const result = await query<any>(sql, params);
 
     if (!result.rows || result.rows.length === 0) {

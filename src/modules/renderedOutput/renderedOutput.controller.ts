@@ -6,7 +6,18 @@ class RenderedOutputController extends BaseController<RenderedOutput> {
   constructor() {
     super(RenderedOutputService);
   }
-
+  async generatePdf(req: Request, res: Response) {
+    const service = this.service as typeof RenderedOutputService;
+    const html = req.body.html;
+    console.log(html)
+    const pdfBuffer = await service.generatePdf(html);
+    res.set({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': 'attachment; filename=invoice.pdf'
+    });
+    console.log(pdfBuffer)
+    res.send(pdfBuffer);
+  }
   async create(req: Request, res: Response) {
     return super.create(req, res);
   }

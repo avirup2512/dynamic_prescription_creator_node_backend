@@ -15,7 +15,7 @@ import { dropdownEntityValueSchema } from "./dropdownEntityValue";
 import { quantityOptionSchema } from "./quantityOption";
 import { sectionRowSchema } from "./sectionRow";
 import { rowsColumnSchema } from "./rowsColumn";
-import { columnInputSchema } from "./columnInput";
+import { columnInputSchema } from "./columnInputGroupJoin";
 import { templateSchema } from "./template";
 import { templateSectionSchema } from "./templateSection";
 import { templateRowSchema } from "./templateRow";
@@ -27,9 +27,19 @@ import { templateInputValueSchema } from "./templateInputValue";
 import { templateInputsQuantityValueSchema } from "./templateInputsQuantityValue";
 import { templateSectionRowSchema } from "./templateSectionRow";
 import { templateRowsColumnSchema } from "./templateRowsColumn";
-import { templateColumnInputSchema } from "./templateColumnInput";
 import { renderedOutputSchema } from "./renderedOutput";
-
+import { templateInputOrSchema } from "./templateInputOr";
+import { templateInputAndSchema } from "./templateInputAnd";
+import { globalDropdownEntityOptionsSchema } from "./globalDropdownEntityOptions";
+import { globalDropdownEntities } from "./globalDropdownEntities";
+import { globalDropdownOptionSchema } from "./globalDropdownOptions";
+import { templateInputDropdownOptionsSchema } from "./templateInputDropdownOptions";
+import { templateInputGroupSchema } from "./templateInputGroup";
+import { templateInputGroupJoinSchema } from "./templateInputGroupJoin";
+import { sectionInputGroupSchema } from "./sectionInputGroup";
+import { sectionInputGroupJoinSchema } from "./sectionInputGroupJoin";
+import { templateColumnInputGroupJoinSchema } from "./templateColumnInputGroupJoin";
+import { templateInputGroupOrSchema } from "./templateInputGroupOr";
 export const schemas = [
   userSchema,
   userPasswordSchema,
@@ -60,6 +70,17 @@ export const schemas = [
   templateInputsQuantityValueSchema,
   templateSectionRowSchema,
   templateRowsColumnSchema,
-  templateColumnInputSchema,
-  renderedOutputSchema
+  renderedOutputSchema,
+  templateInputOrSchema,
+  templateInputAndSchema,
+  globalDropdownEntities,
+  globalDropdownOptionSchema,
+  globalDropdownEntityOptionsSchema,
+  templateInputDropdownOptionsSchema,
+  templateInputGroupSchema,
+  templateInputGroupJoinSchema,
+  templateColumnInputGroupJoinSchema,
+  sectionInputGroupSchema,
+  sectionInputGroupJoinSchema,
+  templateInputGroupOrSchema
 ];

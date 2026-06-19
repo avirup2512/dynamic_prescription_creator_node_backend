@@ -16,5 +16,7 @@ router.delete("/:id", authMiddleware, validateRequest(idParamSchema, "params"), 
 router.get("/dropdown/:id", authMiddleware, validateRequest(idParamSchema, "params"), InputEntityController.getByAllDropdownInputInformationById.bind(InputEntityController));
 
 router.put("/dropdown/:id", authMiddleware, validateRequest(idParamSchema, "params"), validateRequest(inputEntityUpdateSchema, "body"), InputEntityController.updateDropdownEntity.bind(InputEntityController));
+router.put("/dropdown/addsingleOption/:id", authMiddleware, validateRequest(idParamSchema, "params"), validateRequest(inputEntityUpdateSchema, "body"), InputEntityController.AddSingleDropdownEntity.bind(InputEntityController));
+router.post("/suggestdropdown", authMiddleware, validateRequest(inputEntityCreateSchema, "body"), InputEntityController.getDropdownContentFromAI.bind(InputEntityController));
 
 export default router;

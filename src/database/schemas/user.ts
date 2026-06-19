@@ -6,6 +6,8 @@ export const userSchema = {
   lastname VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   is_active SMALLINT NOT NULL DEFAULT 1,
+  isGuestUser SMALLINT NOT NULL DEFAULT 0,
+  guestUserId UUID DEFAULT uuid_generate_v4(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );`

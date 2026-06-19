@@ -110,6 +110,9 @@ export class QuantityModel extends BaseModel<Quantity> {
       if (data.removedOptionIds && data.removedOptionIds.length )
       {
         await Promise.all(data.removedOptionIds.map(async (id: any) => {
+          
+          const deleteQuantityOptionFromTemplateQuery = `DELETE FROM template_input_quantity_options WHERE quantity_option_id = $1 RETURNING *`;
+          const deleteQuantityOptionTemplateResult = await client.query(deleteQuantityOptionFromTemplateQuery, [id]);
           const deleteQuantityOptionQuery = `DELETE FROM quantity_options WHERE id = $1 RETURNING *`;
           const deleteQuantityOptionResult = await client.query(deleteQuantityOptionQuery, [id]);
           const result = (await deleteQuantityOptionResult).rows[0];

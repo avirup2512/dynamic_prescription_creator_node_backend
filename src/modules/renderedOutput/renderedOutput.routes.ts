@@ -11,5 +11,6 @@ router.get("/", authMiddleware, validateRequest(paginationSchema, "query"), Rend
 router.get("/:id", authMiddleware, validateRequest(idParamSchema, "params"), RenderedOutputController.getById.bind(RenderedOutputController));
 router.put("/:id", authMiddleware, validateRequest(idParamSchema, "params"), validateRequest(renderedOutputUpdateSchema, "body"), RenderedOutputController.update.bind(RenderedOutputController));
 router.delete("/:id", authMiddleware, validateRequest(idParamSchema, "params"), RenderedOutputController.remove.bind(RenderedOutputController));
+router.post("/generatePdf", authMiddleware, validateRequest(idParamSchema, "params"), RenderedOutputController.generatePdf.bind(RenderedOutputController));
 
 export default router;

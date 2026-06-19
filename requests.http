@@ -1,0 +1,260 @@
+### Authentication API Test Requests
+### Save as requests.http and use with REST Client extension in VS Code
+
+### ============= BASE URL =============
+@baseUrl = http://localhost:4000/api
+
+### ============= VARIABLES =============
+@email = john.doe@example.com
+@password = SecurePass123!
+@newPassword = NewSecurePass456!
+@accessToken = 
+
+### ============= 1. REGISTRATION =============
+
+### Register new user
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+###
+
+### ============= 2. EMAIL VERIFICATION =============
+
+### Verify email (use token from email)
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "token": "PASTE_TOKEN_FROM_EMAIL_HERE"
+}
+
+###
+
+### ============= 3. LOGIN =============
+
+### Login user
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Expected Response contains:
+### {
+###   "accessToken": "...",
+###   "refreshToken": "...",
+###   "user": { ... }
+### }
+### Copy the accessToken and refreshToken for use in other requests
+
+###
+
+### ============= 4. AUTHENTICATED REQUESTS =============
+
+### Get current user
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{accessToken}}
+
+###
+
+### ============= 5. PASSWORD MANAGEMENT =============
+
+### Request password reset
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+###
+
+### Reset password (use token from email)
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "PASTE_RESET_TOKEN_FROM_EMAIL_HERE",
+  "password": "{{newPassword}}"
+}
+
+###
+
+### Change password (requires authentication)
+POST {{baseUrl}}/auth/change-password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "{{newPassword}}"
+}
+
+###
+
+### ============= 6. SESSION MANAGEMENT =============
+
+### Get all user sessions
+GET {{baseUrl}}/sessions
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Get session details
+GET {{baseUrl}}/sessions/SESSION_ID_HERE
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Revoke specific session
+DELETE {{baseUrl}}/sessions/SESSION_ID_HERE
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Revoke all sessions (logout from all devices)
+DELETE {{baseUrl}}/sessions
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Get login history
+GET {{baseUrl}}/sessions/login-history?limit=20
+Authorization: Bearer {{accessToken}}
+
+###
+
+### ============= 7. RBAC (Role-Based Access Control) =============
+
+### Get all roles
+GET {{baseUrl}}/rbac/roles
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Get all permissions
+GET {{baseUrl}}/rbac/permissions
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Create role (requires admin permission)
+POST {{baseUrl}}/rbac/roles
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "editor",
+  "description": "Editor role with content management",
+  "isSystem": false
+}
+
+###
+
+### Create permission (requires admin permission)
+POST {{baseUrl}}/rbac/permissions
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "resource": "template",
+  "action": "publish",
+  "description": "Permission to publish templates"
+}
+
+###
+
+### Assign role to user (requires admin permission)
+POST {{baseUrl}}/rbac/users/USER_ID_HERE/roles
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "roleId": "ROLE_ID_HERE"
+}
+
+###
+
+### Get user roles
+GET {{baseUrl}}/rbac/users/USER_ID_HERE/roles
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Get user permissions
+GET {{baseUrl}}/rbac/users/USER_ID_HERE/permissions
+Authorization: Bearer {{accessToken}}
+
+###
+
+### ============= 8. LOGOUT =============
+
+### Logout user
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "sessionId": "SPECIFIC_SESSION_ID_OPTIONAL"
+}
+
+###
+
+### ============= ERROR TEST CASES =============
+
+### Test invalid email
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "invalid-email",
+  "password": "SecurePass123!"
+}
+
+###
+
+### Test weak password
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john@example.com",
+  "password": "weak"
+}
+
+###
+
+### Test login with invalid credentials
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "WrongPassword123!"
+}
+
+###
+
+### Test unauthorized request (no token)
+GET {{baseUrl}}/auth/me
+
+###
+
+### Test unauthorized request (invalid token)
+GET {{baseUrl}}/auth/me
+Authorization: Bearer invalid.token.here
+
+###

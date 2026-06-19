@@ -1,0 +1,200 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============= User Model =============
+model User {
+  id                    String                  @id @default(cuid())
+  email                 String                  @unique
+  firstName             String
+  lastName              String
+  password              String
+  isEmailVerified       Boolean                 @default(false)
+  isActive              Boolean                 @default(true)
+  isLockedOut           Boolean                 @default(false)
+  failedLoginAttempts   Int                     @default(0)
+  lockedUntil           DateTime?
+  lastLoginAt           DateTime?
+  lastPasswordChangeAt  DateTime?
+  googleId              String?                 @unique
+  googleEmail           String?
+  profileImage          String?
+  twoFactorEnabled      Boolean                 @default(false)
+  twoFactorSecret       String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  // Relations
+  userRoles             UserRole[]
+  sessions              UserSession[]
+  auditLogs             AuditLog[]
+  loginHistory          LoginHistory[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens   PasswordResetToken[]
+}
+
+// ============= Role Model =============
+model Role {
+  id                    String                  @id @default(cuid())
+  name                  String                  @unique
+  description           String?
+  isSystem              Boolean                 @default(false) // For roles like admin, user, guest
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  // Relations
+  userRoles             UserRole[]
+  rolePermissions       RolePermission[]
+}
+
+// ============= Permission Model =============
+model Permission {
+  id                    String                  @id @default(cuid())
+  name                  String                  @unique // e.g., "template:create", "user:delete"
+  description           String?
+  resource              String                  // e.g., "template", "user"
+  action                String                  // e.g., "create", "read", "update", "delete"
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  // Relations
+  rolePermissions       RolePermission[]
+
+  @@unique([resource, action])
+}
+
+// ============= UserRole Junction =============
+model UserRole {
+  id                    String                  @id @default(cuid())
+  userId                String
+  roleId                String
+  assignedAt            DateTime                @default(now())
+  assignedBy            String?                 // User ID of who assigned this role
+  removedAt             DateTime?
+
+  // Relations
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role                  Role                    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+}
+
+// ============= RolePermission Junction =============
+model RolePermission {
+  id                    String                  @id @default(cuid())
+  roleId                String
+  permissionId          String
+  grantedAt             DateTime                @default(now())
+
+  // Relations
+  role                  Role                    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission            Permission              @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+// ============= User Session Model =============
+model UserSession {
+  id                    String                  @id @default(cuid())
+  userId                String
+  refreshTokenHash      String                  @unique
+  ipAddress             String?
+  userAgent             String?
+  deviceName            String?
+  deviceType            String?                 // e.g., "mobile", "desktop", "tablet"
+  createdAt             DateTime                @default(now())
+  expiresAt             DateTime
+  lastActiveAt          DateTime                @default(now())
+  isRevoked             Boolean                 @default(false)
+  revokedAt             DateTime?
+  revokedReason         String?                 // e.g., "logout", "security_breach", "new_login"
+
+  // Relations
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshTokenHash])
+}
+
+// ============= Email Verification Token Model =============
+model EmailVerificationToken {
+  id                    String                  @id @default(cuid())
+  userId                String
+  token                 String                  @unique
+  tokenHash             String                  @unique
+  expiresAt             DateTime
+  usedAt                DateTime?
+  createdAt             DateTime                @default(now())
+
+  // Relations
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ============= Password Reset Token Model =============
+model PasswordResetToken {
+  id                    String                  @id @default(cuid())
+  userId                String
+  token                 String                  @unique
+  tokenHash             String                  @unique
+  expiresAt             DateTime
+  usedAt                DateTime?
+  createdAt             DateTime                @default(now())
+
+  // Relations
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ============= Login History Model =============
+model LoginHistory {
+  id                    String                  @id @default(cuid())
+  userId                String
+  ipAddress             String?
+  userAgent             String?
+  status                String                  // "success" or "failure"
+  failureReason         String?                 // e.g., "invalid_credentials", "account_locked"
+  createdAt             DateTime                @default(now())
+
+  // Relations
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+// ============= Audit Log Model =============
+model AuditLog {
+  id                    String                  @id @default(cuid())
+  userId                String?
+  action                String                  // e.g., "USER_REGISTERED", "USER_LOGGED_IN"
+  entity                String                  // e.g., "user", "role", "permission"
+  entityId              String?
+  metadata              Json?                   // Additional data like old values, new values
+  ipAddress             String?
+  userAgent             String?
+  status                String                  // "success" or "failure"
+  errorMessage          String?
+  createdAt             DateTime                @default(now())
+
+  // Relations
+  user                  User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+}

@@ -2,17 +2,21 @@ import { Request, Response } from "express";
 import TemplateService from "./template.service";
 import { BaseController } from "../common/base.controller";
 import { Template } from "../../types/entities";
+export interface ExtendedRequest extends Request {
+  user?: Record<string, any>;
+}
 class TemplateController extends BaseController<Template> {
   constructor() {
     super(TemplateService);
   }
 
-  async create(req: Request, res: Response) {
+  async create(req: ExtendedRequest, res: Response) {
     const service = this.service as typeof TemplateService;
     return service.createTemplate(req.body);
   }
-  async createTemplate(req: Request, res: Response) {
+  async createTemplate(req: ExtendedRequest, res: Response) {
     const data = req.body?.data;
+    data.user_id = req?.user ? req.user.id : null;
     try {
           const service = this.service as typeof TemplateService;
           const result = await service.createTemplate(data);
@@ -29,10 +33,11 @@ class TemplateController extends BaseController<Template> {
     }
     return res.status(200).json({ success: true, data: result.rows[0] });
   }
-  async getAllTemplates(req: Request, res: Response)
+  async getAllTemplates(req: ExtendedRequest, res: Response)
   {
     const service = this.service as typeof TemplateService;
-    const result = await service.getAllTemplates(req.query as Record<string, unknown>);
+    const user_id = req?.user ? req.user.id : null;
+    const result = await service.getAllTemplates({user_id} as Record<string, unknown>);
     if (!result) {
       return res.status(404).json({ success: false, message: "Template not found" });
     }

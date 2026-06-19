@@ -26,7 +26,7 @@ import templateColumnRoutes from "../modules/templateColumn/templateColumn.route
 import templateColumnInputRoutes from "../modules/templateColumnInput/templateColumnInput.routes";
 import templateInputRoutes from "../modules/templateInput/templateInput.routes";
 import renderedOutputRoutes from "../modules/renderedOutput/renderedOutput.routes";
-
+import AuthRoutes from "../modules/auth/auth.routes";
 const router = express.Router();
 
 router.use("/users", userRoutes);
@@ -56,5 +56,5 @@ router.use("/template-columns", templateColumnRoutes);
 router.use("/template-column-inputs", templateColumnInputRoutes);
 router.use("/template-inputs", templateInputRoutes);
 router.use("/rendered-outputs", renderedOutputRoutes);
-
+router.use("/auth",AuthRoutes)
 export default router;

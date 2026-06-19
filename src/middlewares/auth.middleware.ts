@@ -1,23 +1,26 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { config } from "../config";
-
+import { AppError } from "../utils/apiResponse";
 export interface AuthenticatedRequest extends Request {
   user?: Record<string, any>;
 }
 
 export function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-//   const header = req.headers.authorization;
-//   if (!header || !header.startsWith("Bearer ")) {
-//     return res.status(401).json({ success: false, message: "Authentication token missing" });
-//   }
+  try {
+    const token = req?.cookies ? req.cookies.accessToken : '';
 
-//   const token = header.split(" ")[1];
-//   try {
-//     req.user = jwt.verify(token, config.jwtSecret) as Record<string, any>;
-//     return next();
-//   } catch (error) {
-//     return res.status(401).json({ success: false, message: "Invalid authentication token" });
-    //   }
-    return next();
+    if (!token) {
+      throw new AppError("Unauthorized", 401);
+    }
+
+    const payload = jwt.verify(
+      token,
+      process.env.JWT_SECRET!
+    ) as { userId: string };
+
+    req.user = payload;
+    next();
+  } catch {
+    next(new AppError("Unauthorized", 401));
+  }
 }

@@ -47,7 +47,7 @@ app.get("/health", (req: Request, res: Response) => {
 });
 
 // ============= Legacy Routes =============
-app.use("/api", routes);
+app.use("/", routes);
 
 // ============= Error Handler =============
 app.use(errorHandler);

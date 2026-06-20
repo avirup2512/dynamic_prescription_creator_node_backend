@@ -11,10 +11,11 @@ class RenderedOutputController extends BaseController<RenderedOutput> {
     const html = req.body.html;
     console.log(html)
     const pdfBuffer = await service.generatePdf(html);
-    res.set({
-    'Content-Type': 'application/pdf',
-    'Content-Disposition': 'attachment; filename=invoice.pdf'
-    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="document.pdf"'
+    );
     console.log(pdfBuffer)
     res.send(pdfBuffer);
   }

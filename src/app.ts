@@ -9,10 +9,7 @@ import { apiLimiter } from "./middlewares/rateLimiter.middleware";
 import { config } from "./config";
 import { createTables } from "./database/createTable";
 import { connectRedis } from "./database/redis";
-import authRoutes from "./modules/auth/auth.routes";
-import rbacRoutes from "./modules/rbac/rbac.routes";
-import sessionRoutes from "./modules/session/session.routes";
-// import { rbacService } from "./modules/rbac/rbac.service";
+
 
 const app = express();
 
@@ -73,11 +70,6 @@ connectRedis().catch((error) => {
 // Initialize database
 // createTables().catch((error) => {
 //   console.warn("Database initialization skipped", error);
-// });
-
-// Initialize RBAC
-// rbacService.initializeDefaultRoles().catch((error) => {
-//   console.error("RBAC initialization failed", error);
 // });
 
 // Export app

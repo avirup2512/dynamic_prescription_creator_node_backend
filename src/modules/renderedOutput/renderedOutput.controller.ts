@@ -15,7 +15,7 @@ class RenderedOutputController extends BaseController<RenderedOutput> {
     res.setHeader(
       "Content-Disposition",
       'attachment; filename="document.pdf"'
-    );
+    )
     console.log(pdfBuffer)
     res.send(pdfBuffer);
   }

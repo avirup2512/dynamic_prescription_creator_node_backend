@@ -40,6 +40,19 @@ import { sectionInputGroupSchema } from "./sectionInputGroup";
 import { sectionInputGroupJoinSchema } from "./sectionInputGroupJoin";
 import { templateColumnInputGroupJoinSchema } from "./templateColumnInputGroupJoin";
 import { templateInputGroupOrSchema } from "./templateInputGroupOr";
+import { foodCategorySchema } from "./food schemas/foodCategorySchema";
+import { foodSchema } from "./food schemas/foodSchema";
+import { foodAliasSchema } from "./food schemas/foodAliasSchema";
+import { foodNutrientSchema } from "./food schemas/foodNutrientSchema";
+import { recipeSchema } from "./recipe schemas/recipesSchemas";
+import { recipeComponentSchema } from "./recipe schemas/recipeComponentSchema";
+import { recipeAliasSchema } from "./recipe schemas/recipeAliasSchema";
+import { recipeNutrientSchema } from "./recipe schemas/recipeNutrientSchema";
+import { recipeTagSchema } from "./recipe schemas/recipeTagSchema";
+import { recipeTagJoinSchema } from "./recipe schemas/recipeTagMappings";
+import { recipeTagCategorySchema } from "./recipe schemas/recipeTagsCategory";
+import { templateFoodJoinSchema } from "./templateFoodJoin";
+import { templateRecipeJoinSchema } from "./templateRecipeJoin";
 export const schemas = [
   userSchema,
   userPasswordSchema,
@@ -82,5 +95,18 @@ export const schemas = [
   templateColumnInputGroupJoinSchema,
   sectionInputGroupSchema,
   sectionInputGroupJoinSchema,
-  templateInputGroupOrSchema
+  templateInputGroupOrSchema,
+  foodCategorySchema,
+  foodSchema,
+  foodAliasSchema,
+  foodNutrientSchema,
+  recipeSchema,
+  recipeComponentSchema,
+  recipeAliasSchema,
+  recipeNutrientSchema,
+  recipeTagCategorySchema,
+  recipeTagSchema,
+  recipeTagJoinSchema,
+  templateRecipeJoinSchema,
+  templateFoodJoinSchema
 ];

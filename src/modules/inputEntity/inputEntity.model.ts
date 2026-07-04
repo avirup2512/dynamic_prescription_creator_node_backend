@@ -1,6 +1,6 @@
 import { BaseModel } from "../common/base.model";
 import { InputEntity } from "../../types/entities";
-import {redisClient} from "../../database/redis";
+import { redisClient } from "../../database/redis";
 import { query, pool } from "../../database/client";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
@@ -26,7 +26,7 @@ export class InputEntityModel extends BaseModel<InputEntity> {
       baseURL: "https://openrouter.ai/api/v1"
     });
   }
-  sleep(ms:any) {
+  sleep(ms: any) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
   async createInputEntity(data: Partial<any>) {
@@ -53,17 +53,17 @@ export class InputEntityModel extends BaseModel<InputEntity> {
   }
   async getInputTypeUUIDByName(name: string) {
     const cachedInputId = await redisClient.get(`inputType:${name}`);
-    if(cachedInputId) {
+    if (cachedInputId) {
       return cachedInputId;
     }
     const result = await this.findOneByField("name", name, "input_types");
-    if(result) {
-      await redisClient.set(`inputType:${name}`, result.id, {EX: 3600}); // Cache for 1 hour
+    if (result) {
+      await redisClient.set(`inputType:${name}`, result.id, { EX: 3600 }); // Cache for 1 hour
       return result.id;
     }
     return null;
   }
-  async findAllInputEntity( filters: Record<string, unknown> = {}) {
+  async findAllInputEntity(filters: Record<string, unknown> = {}) {
     const cacheKey = `inputEntity:join:${JSON.stringify(filters)}`;
     const cachedResult = await redisClient.get(cacheKey);
     if (cachedResult) {
@@ -75,14 +75,15 @@ export class InputEntityModel extends BaseModel<InputEntity> {
     // await redisClient.set(cacheKey, JSON.stringify(result), { EX: 3600 });
     return result;
   }
-  async getAllInputInformationById(id: string | string[] , filters: Record<string, unknown> = {}) {
+  async getAllInputInformationById(id: string | string[], filters: Record<string, unknown> = {}) {
     const cacheKey = `inputEntity:join:id:${id}:${JSON.stringify(filters)}`;
     const cachedResult = await redisClient.get(cacheKey);
     if (cachedResult) {
       return JSON.parse(cachedResult);
     }
-    console.log(id);
-    const sql = `SELECT ie.*, it.name as type_name, iev.id as input_entities_value_id, iev.value FROM input_entities ie JOIN input_types it ON ie.type_id = it.id JOIN input_entity_values as iev ON ie.id = iev.input_entity_id WHERE ie.id = $1 AND (ie.user_id = $2) AND ie.is_deleted = 0 AND (it.name = $3)`;
+    console.log("THIS IS THIS")
+    console.log(filters)
+    const sql = `SELECT ie.*, it.name as type_name, iev.id as input_entities_value_id, iev.value FROM input_entities ie JOIN input_types it ON ie.type_id = it.id JOIN input_entity_values as iev ON ie.id = iev.input_entity_id WHERE ie.id = $1 AND (ie.created_by = $2) AND ie.is_deleted = 0 AND (it.name = $3)`;
     const params = [id, filters.user_id, filters.type_name ?? null];
     const result = await query<any>(sql, params);
     // await redisClient.set(cacheKey, JSON.stringify(result), { EX: 3600 });
@@ -100,8 +101,8 @@ export class InputEntityModel extends BaseModel<InputEntity> {
       if (fields.length === 0) {
         throw new Error("No valid fields to update");
       }
-      const updateInputNameQuery = `UPDATE input_entities SET ${fields.join(", ")} WHERE id = $1 AND created_by=$2 RETURNING *`;
-      const updateInputNameResult = await client.query(updateInputNameQuery, [id,data.user_id]);
+      const updateInputNameQuery = `UPDATE input_entities SET name = $1 WHERE id = $2 AND created_by=$3 RETURNING *`;
+      const updateInputNameResult = await client.query(updateInputNameQuery, [data.name, id, data.user_id]);
       const updatedEntity = (await updateInputNameResult).rows[0];
       const updateValueQuery = `UPDATE input_entity_values SET value = $1 WHERE input_entity_id = $2 RETURNING *`;
       const updateValueResult = await client.query(updateValueQuery, [data.value || "", id]);
@@ -114,10 +115,10 @@ export class InputEntityModel extends BaseModel<InputEntity> {
       throw error;
     }
   }
-  async deleteInputEntity(id: string | string[], user_id:string) {
+  async deleteInputEntity(id: string | string[], user_id: string) {
     try {
       const deleteValueQuery = `UPDATE input_entities SET is_deleted = $1 WHERE id = $2 AND created_by=$3 RETURNING *`;
-      const deletedResult = await query(deleteValueQuery, [1, id,user_id]);
+      const deletedResult = await query(deleteValueQuery, [1, id, user_id]);
       return deletedResult;
     } catch (error) {
       throw error;
@@ -138,7 +139,7 @@ export class InputEntityModel extends BaseModel<InputEntity> {
     // await redisClient.setex(cacheKey, 3600, JSON.stringify(result)); // Cache for 1 hour
     return result;
   }
-  async createDropdownEntity(data: Partial<any>,isGlobal:number) {
+  async createDropdownEntity(data: Partial<any>, isGlobal: number) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -147,32 +148,30 @@ export class InputEntityModel extends BaseModel<InputEntity> {
         throw new Error("Invalid input type");
       }
       const insertSql = `INSERT INTO input_entities (name, type_id, user_id, created_by, is_global) VALUES ($1, $2, $3, $4, $5) RETURNING *`;
-      const params = [data.name, inputTypeUUID, data.user_id,data.user_id,isGlobal ?? 0];
+      const params = [data.name, inputTypeUUID, data.user_id, data.user_id, isGlobal ?? 0];
       const insertResult = await client.query(insertSql, params);
       const insertedEntity = (await insertResult).rows[0];
       let options: Array<any> = [];
-      const insertedValue:Array<any> = [];
-      if (data.value && data.value.length)
-      {
+      const insertedValue: Array<any> = [];
+      if (data.value && data.value.length) {
         options = await Promise.all(
-        data.value.map(async (value: any) => {
-          const query =
-            `INSERT INTO dropdown_options (value)
+          data.value.map(async (value: any) => {
+            const query =
+              `INSERT INTO dropdown_options (value)
             VALUES ($1)
             RETURNING *`;
 
-          const result = await client.query(query, [value.value || ""]);
-          return result.rows[0];
-        })
-      );
+            const result = await client.query(query, [value.value || ""]);
+            return result.rows[0];
+          })
+        );
       };
-      if(options.length === 0) {
+      if (options.length === 0) {
         throw new Error("No valid dropdown options provided");
       }
       if (options.length > 0) {
         {
-          for (let x = 0; x < options.length; x++)
-          {
+          for (let x = 0; x < options.length; x++) {
             const addDropdownOptionsJoinTableQuery = `INSERT INTO dropdown_entity_values (input_entity_id, option_id) VALUES ($1, $2)`;
             const
               addDropdownOptionsJoinTableResult = await client.query(addDropdownOptionsJoinTableQuery, [insertedEntity.id, options[x].id])
@@ -185,7 +184,7 @@ export class InputEntityModel extends BaseModel<InputEntity> {
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
-    }finally {
+    } finally {
       client.release();
     }
   }
@@ -202,9 +201,9 @@ export class InputEntityModel extends BaseModel<InputEntity> {
         fields.push(`name = $${paramIndex++}`);
       }
       let updatedEntity: any;
-       if (fields.length > 0) {
+      if (fields.length > 0) {
         const updateInputNameQuery = `UPDATE input_entities SET name=$1 WHERE id = $2 AND created_by = $3 RETURNING *`;
-        const updateInputNameResult = await client.query(updateInputNameQuery, [data.name,inputEntityId,data.user_id]);
+        const updateInputNameResult = await client.query(updateInputNameQuery, [data.name, inputEntityId, data.user_id]);
         updatedEntity = updateInputNameResult.rows[0];
       } else {
         const entityResult = await client.query(`SELECT * FROM input_entities WHERE id = $1`, [inputEntityId]);
@@ -256,6 +255,7 @@ export class InputEntityModel extends BaseModel<InputEntity> {
         insertedOptions,
       };
     } catch (error) {
+      console.log(error)
       await client.query("ROLLBACK");
       throw error;
     } finally {
@@ -272,8 +272,7 @@ export class InputEntityModel extends BaseModel<InputEntity> {
       if (data.option) {
         const newOption = await client.query(`INSERT INTO dropdown_options (value) VALUES ($1) RETURNING *`, [data.option?.value || ""])
         const newOptionRow = (await newOption).rows[0];
-        if(newOptionRow?.id)
-        {
+        if (newOptionRow?.id) {
           const newOptionAdded = await client.query(`INSERT INTO dropdown_entity_values (input_entity_id, option_id) VALUES ($1, $2) RETURNING *`, [inputEntityId, newOptionRow.id])
         }
         await client.query("COMMIT");
@@ -288,19 +287,19 @@ export class InputEntityModel extends BaseModel<InputEntity> {
       client.release();
     }
   }
-  async callGroq(messages:any) {
-  const response = await this.groqClient.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    temperature: 0.2,
-    response_format: {
-      type: "json_object"
-    },
-    messages
-  });
+  async callGroq(messages: any) {
+    const response = await this.groqClient.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.2,
+      response_format: {
+        type: "json_object"
+      },
+      messages
+    });
 
-  return response.choices[0].message.content;
+    return response.choices[0].message.content;
   }
-  async callOpenRouter(messages:any) {
+  async callOpenRouter(messages: any) {
     const response = await this.openRouterClient.chat.completions.create({
       model: "meta-llama/llama-3.3-70b-instruct:free",
       temperature: 0.2,
@@ -313,7 +312,7 @@ export class InputEntityModel extends BaseModel<InputEntity> {
     return response.choices[0].message.content;
   }
   async getDropdownContentFromAI(messages: any, retries = 3) {
-  const content = `I will provide you with the name of an item, usually a food/medicine item. Your task is to identify its common food category and suggest at least 10 other commonly used, everyday items belonging to the same category.
+    const content = `I will provide you with the name of an item, usually a food/medicine item. Your task is to identify its common food category and suggest at least 10 other commonly used, everyday items belonging to the same category.
             For example:
             - Input: "Jeera"
             - Category: "Spices"
@@ -351,84 +350,83 @@ export class InputEntityModel extends BaseModel<InputEntity> {
               ]
             }
             Return only the JSON object without markdown, code fences, or any explanation.`
-  try {
-    console.log("Using Groq...");
+    try {
+      console.log("Using Groq...");
 
-    return await this.callGroq([{role:'user',content}]);
-  } catch (error:any) {
-    console.error("Groq failed:", error.message);
-    for (let i = 0; i < retries; i++) {
-      try {
-        console.log("Falling back to OpenRouter...");
+      return await this.callGroq([{ role: 'user', content }]);
+    } catch (error: any) {
+      console.error("Groq failed:", error.message);
+      for (let i = 0; i < retries; i++) {
+        try {
+          console.log("Falling back to OpenRouter...");
 
-        return await this.callOpenRouter([{content}]);
-      } catch (err:any) {
-        console.error(
-          `OpenRouter attempt ${i + 1} failed:`,
-          err.message
-        );
+          return await this.callOpenRouter([{ content }]);
+        } catch (err: any) {
+          console.error(
+            `OpenRouter attempt ${i + 1} failed:`,
+            err.message
+          );
 
-        await this.sleep(Math.pow(2, i) * 1000);
+          await this.sleep(Math.pow(2, i) * 1000);
+        }
       }
+      throw new Error("All providers failed.");
     }
-    throw new Error("All providers failed.");
   }
-  }
-  async searchGlobalDropdownOptionsInDB(searchText: any)
-  {
+  async searchGlobalDropdownOptionsInDB(searchText: any) {
     try {
       //const query = `WITH matched_entity AS (
-//     -- Priority 1: Match category name
-//     SELECT
-//         ie.id,
-//         ie.name,
-//         1 AS priority
-//     FROM input_entities ie
-//     WHERE LOWER(ie.name) = LOWER($1)
-//     AND ie.is_global = 1
-//     AND ie.is_deleted = 0
+      //     -- Priority 1: Match category name
+      //     SELECT
+      //         ie.id,
+      //         ie.name,
+      //         1 AS priority
+      //     FROM input_entities ie
+      //     WHERE LOWER(ie.name) = LOWER($1)
+      //     AND ie.is_global = 1
+      //     AND ie.is_deleted = 0
 
-//     UNION ALL
+      //     UNION ALL
 
-//     -- Priority 2: Match dropdown option
-//     SELECT
-//         ie.id,
-//         ie.name,
-//         2 AS priority
-//     FROM input_entities ie
-//     JOIN dropdown_entity_values dev
-//         ON dev.input_entity_id = ie.id
-//     JOIN dropdown_options dopt
-//         ON dopt.id = dev.option_id
-//     WHERE LOWER(dopt.value) = LOWER($1)
-// )
+      //     -- Priority 2: Match dropdown option
+      //     SELECT
+      //         ie.id,
+      //         ie.name,
+      //         2 AS priority
+      //     FROM input_entities ie
+      //     JOIN dropdown_entity_values dev
+      //         ON dev.input_entity_id = ie.id
+      //     JOIN dropdown_options dopt
+      //         ON dopt.id = dev.option_id
+      //     WHERE LOWER(dopt.value) = LOWER($1)
+      // )
 
-// SELECT
-//     ie.id,
-//     ie.name,
-//     json_agg(
-//         json_build_object(
-//             'id', dopt.id,
-//             'value', dopt.value
-//         )
-//         ORDER BY dopt.value
-//     ) AS dropdown_options
-// FROM (
-//     SELECT *
-//     FROM matched_entity
-//     ORDER BY priority
-//     LIMIT 1
-// ) me
-// JOIN input_entities ie
-//     ON ie.id = me.id
-// JOIN dropdown_entity_values dev
-//     ON dev.input_entity_id = ie.id
-// JOIN dropdown_options dopt
-//     ON dopt.id = dev.option_id
-// GROUP BY
-//     ie.id,
-//     ie.name;
-// `;
+      // SELECT
+      //     ie.id,
+      //     ie.name,
+      //     json_agg(
+      //         json_build_object(
+      //             'id', dopt.id,
+      //             'value', dopt.value
+      //         )
+      //         ORDER BY dopt.value
+      //     ) AS dropdown_options
+      // FROM (
+      //     SELECT *
+      //     FROM matched_entity
+      //     ORDER BY priority
+      //     LIMIT 1
+      // ) me
+      // JOIN input_entities ie
+      //     ON ie.id = me.id
+      // JOIN dropdown_entity_values dev
+      //     ON dev.input_entity_id = ie.id
+      // JOIN dropdown_options dopt
+      //     ON dopt.id = dev.option_id
+      // GROUP BY
+      //     ie.id,
+      //     ie.name;
+      // `;
       const query_2 = `WITH matched_entity AS (
         -- Priority 1: Match category name
         SELECT
@@ -489,42 +487,37 @@ export class InputEntityModel extends BaseModel<InputEntity> {
       console.log(error)
     }
   }
-  async searchGlobalDropdownCategory(name:any)
-  {
+  async searchGlobalDropdownCategory(name: any) {
     const client = await pool.connect();
     try {
       const searchQuery = "SELECT * FROM global_dropdown_entities WHERE name=$1";
       const searchedResult = await client.query(searchQuery, [name]);
       console.log(searchedResult)
-      if (searchedResult)
-      {
+      if (searchedResult) {
         const id = searchedResult.rows[0].id;
         const availableOptionQuery = "SELECT gdo.value FROM global_dropdown_options gdo JOIN global_dropdown_entity_options gdeo ON gdo.id = gdeo.option_id WHERE gdeo.dropdown_entity_id= $1";
         const availableOptions = await client.query(availableOptionQuery, [id]);
-        return {availableOptions:availableOptions?.rows, entity:searchedResult.rows[0]};
+        return { availableOptions: availableOptions?.rows, entity: searchedResult.rows[0] };
       }
     } catch (error) {
-      
+
     }
   }
-  async createGlobalDropdown(data: any)
-  {
+  async createGlobalDropdown(data: any) {
     const client = await pool.connect();
     try {
-      const exstingDropdown:any = await this.searchGlobalDropdownCategory(data.name);
+      const exstingDropdown: any = await this.searchGlobalDropdownCategory(data.name);
       console.log("AVAILABLE")
       console.log(exstingDropdown);
       let newOptions: any = data?.value;
-      if (exstingDropdown && exstingDropdown?.availableOptions && exstingDropdown?.availableOptions.length)
-      {
+      if (exstingDropdown && exstingDropdown?.availableOptions && exstingDropdown?.availableOptions.length) {
         const availableSet: Set<string> = new Set();
-        for (let x = 0; x < exstingDropdown.availableOptions.length; x++)
-        {
+        for (let x = 0; x < exstingDropdown.availableOptions.length; x++) {
           availableSet.add(exstingDropdown.availableOptions[x].value.toLowerCase())
         }
         newOptions = data.value.map((value: any) => !availableSet.has(value.value.toLowerCase()) ? value : null).filter
           ((value: any) => value != null)
-        
+
       }
       console.log(data.value);
       console.log(newOptions);
@@ -534,36 +527,33 @@ export class InputEntityModel extends BaseModel<InputEntity> {
         throw new Error("Invalid input type");
       }
       let dropdownEntity = exstingDropdown?.entity;
-      if (!dropdownEntity)
-      {
+      if (!dropdownEntity) {
         const insertSql = `INSERT INTO global_dropdown_entities (name, type_id, created_by) VALUES ($1, $2, $3) RETURNING *`;
         const params = [data.name, inputTypeUUID, data.user_id];
         const insertResult = await client.query(insertSql, params);
         dropdownEntity = (await insertResult).rows[0];
       }
       let options: Array<any> = [];
-      const insertedValue:Array<any> = [];
-      if (newOptions && newOptions.length)
-      {
+      const insertedValue: Array<any> = [];
+      if (newOptions && newOptions.length) {
         options = await Promise.all(
-        newOptions.map(async (value: any) => {
-          const query =
-            `INSERT INTO global_dropdown_options (value)
+          newOptions.map(async (value: any) => {
+            const query =
+              `INSERT INTO global_dropdown_options (value)
             VALUES ($1)
             RETURNING *`;
 
-          const result = await client.query(query, [value.value || ""]);
-          return result.rows[0];
-        })
-      );
+            const result = await client.query(query, [value.value || ""]);
+            return result.rows[0];
+          })
+        );
       };
-      if(options.length === 0) {
+      if (options.length === 0) {
         throw new Error("No valid dropdown options provided");
       }
       if (options.length > 0) {
         {
-          for (let x = 0; x < options.length; x++)
-          {
+          for (let x = 0; x < options.length; x++) {
             const addDropdownOptionsJoinTableQuery = `INSERT INTO global_dropdown_entity_options (dropdown_entity_id, option_id) VALUES ($1, $2)`;
             const
               addDropdownOptionsJoinTableResult = await client.query(addDropdownOptionsJoinTableQuery, [dropdownEntity?.id, options[x].id])
@@ -576,8 +566,8 @@ export class InputEntityModel extends BaseModel<InputEntity> {
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
-    }finally {
+    } finally {
       client.release();
     }
   }
-  }
+}

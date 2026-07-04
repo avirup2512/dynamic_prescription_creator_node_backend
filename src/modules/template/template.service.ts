@@ -10,6 +10,10 @@ export class TemplateService extends BaseService<Template> {
     const model = this.model as TemplateModel;
     return model.createTemplate(data);
   }
+  async createDraftTemplate(data: Partial<any>) {
+    const model = this.model as TemplateModel;
+    return model.createDraftTemplate(data);
+  }
   async updateTemplate(id: string, data: Partial<any>) {
     const model = this.model as TemplateModel;
     return model.updateTemplate(id, data);
@@ -22,6 +26,23 @@ export class TemplateService extends BaseService<Template> {
   async getAllTemplates(filters: Record<string, unknown> = {}) {
     const model = this.model as TemplateModel;
     return await model.getAllTemplates(filters);
+  }
+  async createAndAssignSectionToTemplate(data: Partial<any>) {
+    const model = this.model as TemplateModel;
+    return model.createAndAssignSectionToTemplate(data);
+  }
+
+  searchAllTypesOfInputByKeyword(keyword: string) {
+    const model = this.model as TemplateModel;
+    return model.searchAllTypesOfInputByKeyword(keyword);
+  }
+  addIndividualRowToTemplateSection(templateSectionId: string, rowData: any) {
+    const model = this.model as TemplateModel;
+    return model.addIndividualRowToTemplateSection(templateSectionId, rowData);
+  }
+  addColumnToRow(templateRowId: string, columnData: any) {
+    const model = this.model as TemplateModel;
+    return model.addColumnToRow(templateRowId, columnData);
   }
 }
 

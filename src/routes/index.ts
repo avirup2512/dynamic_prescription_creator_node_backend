@@ -27,6 +27,7 @@ import templateColumnInputRoutes from "../modules/templateColumnInput/templateCo
 import templateInputRoutes from "../modules/templateInput/templateInput.routes";
 import renderedOutputRoutes from "../modules/renderedOutput/renderedOutput.routes";
 import AuthRoutes from "../modules/auth/auth.routes";
+import foodAndRecipesRoutes from "../modules/foodAndRecipes/foodAndRecipes.routes";
 const router = express.Router();
 
 router.use("/users", userRoutes);
@@ -56,5 +57,6 @@ router.use("/template-columns", templateColumnRoutes);
 router.use("/template-column-inputs", templateColumnInputRoutes);
 router.use("/template-inputs", templateInputRoutes);
 router.use("/rendered-outputs", renderedOutputRoutes);
-router.use("/auth",AuthRoutes)
+router.use("/auth", AuthRoutes);
+router.use("/food-and-recipe", foodAndRecipesRoutes);
 export default router;

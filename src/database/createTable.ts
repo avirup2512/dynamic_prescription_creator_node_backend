@@ -23,7 +23,7 @@ export async function createTables() {
 }
 
 async function seedInputTypes() {
-  const values = ["INPUT_TYPE_1", "INPUT_TYPE_2", "INPUT_TYPE_3"];
+  const values = ["INPUT_TYPE_1", "INPUT_TYPE_2", "INPUT_TYPE_3", "INPUT_TYPE_4", "INPUT_TYPE_5", "INPUT_TYPE_6"];
 
   for (const name of values) {
     await query(

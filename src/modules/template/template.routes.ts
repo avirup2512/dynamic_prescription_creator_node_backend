@@ -7,9 +7,13 @@ import { templateCreateSchema, templateUpdateSchema, idParamSchema, paginationSc
 const router = express.Router();
 
 router.post("/", authMiddleware, validateRequest(templateCreateSchema, "body"), TemplateController.createTemplate.bind(TemplateController));
+router.post("/createDraft", authMiddleware, validateRequest(templateCreateSchema, "body"), TemplateController.createDraftTemplate.bind(TemplateController));
+router.post("/createsectionandAssign", authMiddleware, validateRequest(templateCreateSchema, "body"), TemplateController.createAndAssignSectionToTemplate.bind(TemplateController));
 router.get("/", authMiddleware, validateRequest(paginationSchema, "query"), TemplateController.getAllTemplates.bind(TemplateController));
 router.get("/:id", authMiddleware, validateRequest(idParamSchema, "params"), TemplateController.getAllTemplateInfoById.bind(TemplateController));
 router.put("/:id", authMiddleware, validateRequest(idParamSchema, "params"), validateRequest(templateUpdateSchema, "body"), TemplateController.update.bind(TemplateController));
 router.delete("/:id", authMiddleware, validateRequest(idParamSchema, "params"), TemplateController.remove.bind(TemplateController));
-
+router.get("/search/:keyword", authMiddleware, TemplateController.searchAllTypesOfInputByKeyword.bind(TemplateController));
+router.post("/addrow/:templateSectionId", authMiddleware, TemplateController.addIndividualRowToTemplateSection.bind(TemplateController));
+router.post("/addcolumn/:templateRowId", authMiddleware, TemplateController.addColumnToRow.bind(TemplateController));
 export default router;

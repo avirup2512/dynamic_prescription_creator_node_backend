@@ -6,6 +6,7 @@ export const templateInputGroupJoinSchema = {
   template_input_id UUID NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_template_input_group_join UNIQUE (template_input_group_id, template_input_id),
   CONSTRAINT fk_template_input_group_join_template_input_group FOREIGN KEY (template_input_group_id) REFERENCES template_input_groups(id) ON DELETE CASCADE,
   CONSTRAINT fk_template_input_group_join_template_input FOREIGN KEY (template_input_id) REFERENCES template_inputs(id) ON DELETE CASCADE
 );`

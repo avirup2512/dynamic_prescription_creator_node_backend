@@ -7,6 +7,7 @@ export const templateInputExtranoteSchema = {
   is_deleted SMALLINT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_template_input_extranotes UNIQUE (template_input_id),
   CONSTRAINT fk_template_input_extranote_template_input FOREIGN KEY (template_input_id) REFERENCES template_inputs(id) ON DELETE CASCADE
 );`
 };

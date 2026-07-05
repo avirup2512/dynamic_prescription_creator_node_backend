@@ -1,7 +1,8 @@
 import { BaseModel } from "../common/base.model";
 import { Section } from "../../types/entities";
-import { pool,query } from "../../database/client";
+import { pool, query } from "../../database/client";
 import { InputEntityService } from "../inputEntity/inputEntity.service";
+import { SectionInput, UUID, UpsertContext, RowInput, ColumnInput, InputGroupInput, InputInput } from "./section-types";
 
 export class SectionModel extends BaseModel<Section> {
   inputEntityService: InputEntityService;
@@ -14,130 +15,308 @@ export class SectionModel extends BaseModel<Section> {
     );
     this.inputEntityService = new InputEntityService();
   }
-
-  async createSection(data: Partial<any>) {
+  async upsertSection(data: SectionInput, userId: UUID) {
     const client = await pool.connect();
     try {
-      await client.query("BEGIN");
+      await client.query('BEGIN');
 
-      const sectionName = data.name || "";
-      const sectionCreatedBy = data.user_id;
-      const sectionIsDeleted = data.is_deleted ?? 0;
+      const ctx: UpsertContext = { client, userId, inputTypeUuidCache: new Map() };
 
-      const sectionInsertQuery = `INSERT INTO sections (name, created_by, is_deleted) VALUES ($1, $2, $3) RETURNING *`;
-      const sectionResult = await client.query(sectionInsertQuery, [sectionName, sectionCreatedBy, sectionIsDeleted]);
-      const insertedSection = sectionResult.rows[0];
+      const { rows } = await ctx.client.query(
+        `INSERT INTO sections (id, name, created_by, is_deleted)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           is_deleted = EXCLUDED.is_deleted,
+           updated_at = now()
+         WHERE sections.created_by = $3
+         RETURNING *`,
+        [data.id, data.name ?? '', userId, data.is_deleted ?? 0],
+      );
 
-      const inputTypeUuidCache: Record<string, string> = {};
-      const rows = Array.isArray(data.rows) ? data.rows : [];
-      for (const row of rows) {
-        await this.insertSectionRow(client, insertedSection.id, row, inputTypeUuidCache);
+      const section = rows[0];
+      if (!section) {
+        // Either this id belongs to another user's section, or the WHERE
+        // filtered out the update. Either way, don't silently no-op.
+        throw new Error(`Section ${data.id} not found or not owned by user ${userId}`);
       }
 
-      await client.query("COMMIT");
-      return insertedSection;
+      await this.syncRows(ctx, section.id, data.rows ?? []);
+
+      await client.query('COMMIT');
+      return section;
     } catch (error) {
-      console.error(error);
-      await client.query("ROLLBACK");
+      await client.query('ROLLBACK');
+      console.error('[SectionService.upsertSection]', error);
       throw error;
     } finally {
       client.release();
     }
   }
 
-  private async insertSectionRow(
-    client: any,
-    sectionId: string,
-    row: Partial<any>,
-    inputTypeUuidCache: Record<string, string>,
-  ) {
-    const addRowQuery = `INSERT INTO rows (name, row_order) VALUES ($1, $2) RETURNING *`;
-    const rowResult = await client.query(addRowQuery, [row?.name ?? "", row?.row_order ?? 0]);
-    const insertedRow = rowResult.rows[0];
+  /* ---------------- Rows ---------------- */
 
-    const addSectionRowsQuery = `INSERT INTO section_rows (section_id, row_id) VALUES ($1, $2) RETURNING *`;
-    await client.query(addSectionRowsQuery, [sectionId, insertedRow.id]);
-
-    const columns = Array.isArray(row?.column)
-      ? row.column
-      : Array.isArray(row?.columns)
-        ? row.columns
-        : [];
-    for (const col of columns) {
-      await this.insertColumnWithInputs(client, insertedRow.id, col, inputTypeUuidCache);
-    }
+  private getColumns(row: RowInput): ColumnInput[] {
+    return Array.isArray(row.columns) ? row.columns : Array.isArray(row.column) ? row.column : [];
   }
-  private async insertColumnWithInputs(
-    client: any,
-    rowId: string,
-    col: Partial<any>,
-    inputTypeUuidCache: Record<string, string>,
-  ) {
-    const addColumnQuery = `INSERT INTO columns (name, width, column_order) VALUES ($1, $2, $3) RETURNING *`;
-    const columnResult = await client.query(addColumnQuery, [col?.name ?? "", Math.ceil(col?.width ?? 100), col?.column_order ?? 0]);
-    const insertedColumn = columnResult.rows[0];
 
-    const addRowColumnQuery = `INSERT INTO rows_columns (column_id, row_id) VALUES ($1, $2) RETURNING *`;
-    await client.query(addRowColumnQuery, [insertedColumn.id, rowId]);
+  private async syncRows(ctx: UpsertContext, sectionId: UUID, incomingRows: RowInput[]) {
+    const { rows: existing } = await ctx.client.query(
+      `SELECT row_id FROM section_rows WHERE section_id = $1`,
+      [sectionId],
+    );
+    const existingIds = new Set<UUID>(existing.map((r: any) => r.row_id));
+    const incomingIds = new Set<UUID>();
 
-    const inputGroups = Array.isArray(col?.inputGroup) ? col.inputGroup : [];
-    for (const inputGroup of inputGroups) {
-      await this.insertInputGroupForColumn(client, insertedColumn.id, inputGroup, inputTypeUuidCache);
+    for (const row of incomingRows) {
+      incomingIds.add(row.id);
+      await this.upsertRow(ctx, sectionId, row, existingIds.has(row.id));
     }
-  }
-  private async insertInputGroupForColumn(
-    client: any,
-    columnId: string,
-    inputGroup: Partial<any>,
-    inputTypeUuidCache: Record<string, string>,
-  ) {
-    const addInputGroupQuery = `INSERT INTO section_input_groups (column_id, input_group_order) VALUES ($1, $2) RETURNING *`;
-    const inputResult = await client.query(addInputGroupQuery, [columnId, inputGroup?.input_group_order ?? 0]);
-    const insertedInputGroup = inputResult.rows[0];
-    const addColumnInputQuery = `INSERT INTO column_inputs_group_join (section_input_group_id, column_id) VALUES ($1, $2) RETURNING *`;
-    await client.query(addColumnInputQuery, [insertedInputGroup.id, columnId]);
-    for (const input of inputGroup?.inputs ?? []) {
-      await this.insertInputForColumn(client, insertedInputGroup.id, input, inputTypeUuidCache);
-    }
-  }
-  private async insertInputForColumn(
-    client: any,
-    inputGroupId:string,
-    input: Partial<any>,
-    inputTypeUuidCache: Record<string, string>,
-  ) {
-    const inputType = input?.type == "inputtype_1"
-      ? 'INPUT_TYPE_1'
-      : input?.type == "inputtype_2"
-        ? "INPUT_TYPE_2"
-        : "INPUT_TYPE_3";
 
-    let inputTypeUUID: any = inputTypeUuidCache[inputType];
-    if (!inputTypeUUID) {
-      inputTypeUUID = await this.inputEntityService.getInputTypeUUIDByName(inputType ?? "");
-      inputTypeUuidCache[inputType] = inputTypeUUID;
-    }
-    let quantityId = input?.quantity_id ?? null;
-    console.log("This is NEW INPUT", input)
-    console.log(input)
-    const addInputQuery = `INSERT INTO inputs (type_id, label, input_entity_id, show_label,quantity_id, show_quantity,input_order,is_bold,font_size,extra_note,is_deleted) VALUES ($1, $2, $3, $4, $5, $6, $7, $8,$9,$10,$11) RETURNING *`;
-    const inputResult = await client.query(addInputQuery, [
-      inputTypeUUID,
-      input?.name ?? "",
-      input?.input_entity_id ?? null,
-      input?.show_label ? 1 : 0,
-      quantityId,
-      (input?.show_quantity ? 1 : 0),
-      input?.input_order ?? 0,
-      input?.is_bold ?? 0,
-      input?.font_size ?? 16,
-      input?.extra_note ?? 0,
-      input?.is_deleted ?? 0,
-    ]);
-    const insertedInput = inputResult.rows[0];
-    const addColumnInputQuery = `INSERT INTO section_input_group_join (section_input_group_id, input_id) VALUES ($1, $2) RETURNING *`;
-    await client.query(addColumnInputQuery, [inputGroupId, insertedInput.id]);
+    const toDelete = [...existingIds].filter((id) => !incomingIds.has(id));
+    for (const rowId of toDelete) await this.deleteRow(ctx, rowId);
   }
+
+  private async upsertRow(ctx: UpsertContext, sectionId: UUID, row: RowInput, isExisting: boolean) {
+    const { rows } = await ctx.client.query(
+      `INSERT INTO rows (id, name, row_order)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         row_order = EXCLUDED.row_order,
+         updated_at = now()
+       RETURNING *`,
+      [row.id, row.name ?? '', row.row_order ?? 0],
+    );
+    const upserted = rows[0];
+
+    if (!isExisting) {
+      // Junction table has no unique constraint to ON CONFLICT against, so
+      // only link it the first time this row shows up under this section.
+      await ctx.client.query(`INSERT INTO section_rows (section_id, row_id) VALUES ($1, $2)`, [
+        sectionId,
+        upserted.id,
+      ]);
+    }
+
+    await this.syncColumns(ctx, upserted.id, this.getColumns(row));
+    return upserted;
+  }
+
+  private async deleteRow(ctx: UpsertContext, rowId: UUID) {
+    const { rows: cols } = await ctx.client.query(
+      `SELECT column_id FROM rows_columns WHERE row_id = $1`,
+      [rowId],
+    );
+    for (const { column_id } of cols) await this.deleteColumn(ctx, column_id);
+
+    await ctx.client.query(`DELETE FROM section_rows WHERE row_id = $1`, [rowId]);
+    await ctx.client.query(`DELETE FROM rows WHERE id = $1`, [rowId]);
+  }
+
+  /* ---------------- Columns ---------------- */
+
+  private async syncColumns(ctx: UpsertContext, rowId: UUID, incomingColumns: ColumnInput[]) {
+    const { rows: existing } = await ctx.client.query(
+      `SELECT column_id FROM rows_columns WHERE row_id = $1`,
+      [rowId],
+    );
+    const existingIds = new Set<UUID>(existing.map((c: any) => c.column_id));
+    const incomingIds = new Set<UUID>();
+
+    for (const col of incomingColumns) {
+      incomingIds.add(col.id);
+      await this.upsertColumn(ctx, rowId, col, existingIds.has(col.id));
+    }
+
+    const toDelete = [...existingIds].filter((id) => !incomingIds.has(id));
+    for (const columnId of toDelete) await this.deleteColumn(ctx, columnId);
+  }
+
+  private async upsertColumn(ctx: UpsertContext, rowId: UUID, col: ColumnInput, isExisting: boolean) {
+    const { rows } = await ctx.client.query(
+      `INSERT INTO columns (id, name, width, column_order)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         width = EXCLUDED.width,
+         column_order = EXCLUDED.column_order,
+         updated_at = now()
+       RETURNING *`,
+      [col.id, col.name ?? '', Math.ceil(col.width ?? 100), col.column_order ?? 0],
+    );
+    const upserted = rows[0];
+
+    if (!isExisting) {
+      await ctx.client.query(`INSERT INTO rows_columns (row_id, column_id) VALUES ($1, $2)`, [
+        rowId,
+        upserted.id,
+      ]);
+    }
+
+    await this.syncInputGroups(ctx, upserted.id, col.inputGroup ?? []);
+    return upserted;
+  }
+
+  private async deleteColumn(ctx: UpsertContext, columnId: UUID) {
+    const { rows: groups } = await ctx.client.query(
+      `SELECT section_input_group_id FROM column_inputs_group_join WHERE column_id = $1`,
+      [columnId],
+    );
+    for (const { section_input_group_id } of groups) {
+      await this.deleteInputGroup(ctx, section_input_group_id);
+    }
+
+    await ctx.client.query(`DELETE FROM rows_columns WHERE column_id = $1`, [columnId]);
+    await ctx.client.query(`DELETE FROM columns WHERE id = $1`, [columnId]);
+  }
+
+  /* ---------------- Input Groups ---------------- */
+
+  private async syncInputGroups(ctx: UpsertContext, columnId: UUID, incomingGroups: InputGroupInput[]) {
+    const { rows: existing } = await ctx.client.query(
+      `SELECT section_input_group_id FROM column_inputs_group_join WHERE column_id = $1`,
+      [columnId],
+    );
+    const existingIds = new Set<UUID>(existing.map((g: any) => g.section_input_group_id));
+    const incomingIds = new Set<UUID>();
+
+    for (const group of incomingGroups) {
+      incomingIds.add(group.id);
+      await this.upsertInputGroup(ctx, columnId, group, existingIds.has(group.id));
+    }
+
+    const toDelete = [...existingIds].filter((id) => !incomingIds.has(id));
+    for (const groupId of toDelete) await this.deleteInputGroup(ctx, groupId);
+  }
+
+  private async upsertInputGroup(
+    ctx: UpsertContext,
+    columnId: UUID,
+    group: InputGroupInput,
+    isExisting: boolean,
+  ) {
+    const { rows } = await ctx.client.query(
+      `INSERT INTO section_input_groups (id, column_id, input_group_order)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO UPDATE SET
+         input_group_order = EXCLUDED.input_group_order,
+         updated_at = now()
+       RETURNING *`,
+      [group.id, columnId, group.input_group_order ?? 0],
+    );
+    const upserted = rows[0];
+
+    if (!isExisting) {
+      await ctx.client.query(
+        `INSERT INTO column_inputs_group_join (column_id, section_input_group_id) VALUES ($1, $2)`,
+        [columnId, upserted.id],
+      );
+    }
+
+    await this.syncInputs(ctx, upserted.id, group.inputs ?? []);
+    return upserted;
+  }
+
+  private async deleteInputGroup(ctx: UpsertContext, groupId: UUID) {
+    const { rows: joins } = await ctx.client.query(
+      `SELECT input_id FROM section_input_group_join WHERE section_input_group_id = $1`,
+      [groupId],
+    );
+    for (const { input_id } of joins) await this.deleteInput(ctx, input_id);
+
+    await ctx.client.query(
+      `DELETE FROM column_inputs_group_join WHERE section_input_group_id = $1`,
+      [groupId],
+    );
+    await ctx.client.query(`DELETE FROM section_input_groups WHERE id = $1`, [groupId]);
+  }
+
+  /* ---------------- Inputs ---------------- */
+
+  private async syncInputs(ctx: UpsertContext, groupId: UUID, incomingInputs: InputInput[]) {
+    const { rows: existing } = await ctx.client.query(
+      `SELECT input_id FROM section_input_group_join WHERE section_input_group_id = $1`,
+      [groupId],
+    );
+    const existingIds = new Set<UUID>(existing.map((i: any) => i.input_id));
+    const incomingIds = new Set<UUID>();
+
+    for (const input of incomingInputs) {
+      incomingIds.add(input.id);
+      await this.upsertInput(ctx, groupId, input, existingIds.has(input.id));
+    }
+
+    const toDelete = [...existingIds].filter((id) => !incomingIds.has(id));
+    for (const inputId of toDelete) await this.deleteInput(ctx, inputId);
+  }
+
+  private async upsertInput(ctx: UpsertContext, groupId: UUID, input: InputInput, isExisting: boolean) {
+    const typeUuid = await this.resolveInputTypeUuid(ctx, input.type);
+    const { rows } = await ctx.client.query(
+      `INSERT INTO inputs
+         (id, type_id, label, input_entity_id, show_label, quantity_id, show_quantity,
+          input_order, is_bold, font_size, extra_note, is_deleted)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (id) DO UPDATE SET
+         type_id = EXCLUDED.type_id,
+         label = EXCLUDED.label,
+         input_entity_id = EXCLUDED.input_entity_id,
+         show_label = EXCLUDED.show_label,
+         quantity_id = EXCLUDED.quantity_id,
+         show_quantity = EXCLUDED.show_quantity,
+         input_order = EXCLUDED.input_order,
+         is_bold = EXCLUDED.is_bold,
+         font_size = EXCLUDED.font_size,
+         extra_note = EXCLUDED.extra_note,
+         is_deleted = EXCLUDED.is_deleted,
+         updated_at = now()
+       RETURNING *`,
+      [
+        input.id,
+        typeUuid,
+        input.name ?? '',
+        input.input_entity_id ?? null,
+        input.show_label ? 1 : 0,
+        input.quantity_id ?? null,
+        input.show_quantity ? 1 : 0,
+        input.input_order ?? 0,
+        input.is_bold ? 1 : 0,
+        input.font_size ?? 16,
+        input.extra_note ?? 0,
+        input.is_deleted ?? 0,
+      ],
+    );
+    const upserted = rows[0];
+
+    if (!isExisting) {
+      await ctx.client.query(
+        `INSERT INTO section_input_group_join (section_input_group_id, input_id) VALUES ($1, $2)`,
+        [groupId, upserted.id],
+      );
+    }
+    return upserted;
+  }
+
+  private async deleteInput(ctx: UpsertContext, inputId: UUID) {
+    await ctx.client.query(`DELETE FROM section_input_group_join WHERE input_id = $1`, [inputId]);
+    await ctx.client.query(`DELETE FROM inputs WHERE id = $1`, [inputId]);
+  }
+
+  /* ---------------- Input type UUID resolution ---------------- */
+
+  private async resolveInputTypeUuid(ctx: UpsertContext, type?: string): Promise<UUID> {
+    const inputType =
+      type === 'inputtype_1' ? 'INPUT_TYPE_1' : type === 'inputtype_2' ? 'INPUT_TYPE_2' : 'INPUT_TYPE_3';
+
+    let uuid = ctx.inputTypeUuidCache.get(inputType) as UUID;
+    if (!uuid) {
+      uuid = await this.inputEntityService.getInputTypeUUIDByName(inputType) as UUID;
+      ctx.inputTypeUuidCache.set(inputType, uuid);
+    }
+    return uuid;
+  }
+
   async getAllSections(filters: Record<string, unknown> = {}) {
     try {
       const sql = `SELECT * FROM sections ie  WHERE (created_by IS NULL OR ie.created_by = $1) AND ie.is_deleted = 0 ORDER BY created_at DESC`;
@@ -150,326 +329,7 @@ export class SectionModel extends BaseModel<Section> {
       throw error;
     }
   }
-  async updateSection(sectionId: string, data: Partial<any>) {
-    console.log("Updating section with ID:", sectionId, "and data:", data);
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    // Update section basic info
-    const sectionUpdateQuery = `UPDATE sections SET name = $1, is_deleted = $2 WHERE id = $3 AND created_by=$4 RETURNING *`;
-    const sectionResult = await client.query(sectionUpdateQuery, [
-      data.name || "",
-      data.is_deleted ?? 0,
-      sectionId,
-      data?.user_id
-    ]);
-    const updatedSection = sectionResult.rows[0];
-
-    // Get existing rows for this section
-    const existingRowsQuery = `SELECT row_id FROM section_rows WHERE section_id = $1`;
-    const existingRowsResult = await client.query(existingRowsQuery, [sectionId]);
-    const existingRowIds = new Set(existingRowsResult.rows.map((r: any) => r.row_id));
-
-    const inputTypeUuidCache: Record<string, string> = {};
-    const incomingRowIds = new Set<string>();
-    const rows = Array.isArray(data.rows) ? data.rows : [];
-    console.log(existingRowIds);
-    // Process incoming rows
-    for (const row of rows) {
-      if (row.row_id && existingRowIds.has(row.row_id)) {
-        // Update existing row
-        await this.updateSectionRow(client, sectionId, row, inputTypeUuidCache);
-        incomingRowIds.add(row.row_id);
-      } else if (!row.row_id) {
-        // Insert new row
-        await this.insertSectionRow(client, sectionId, row, inputTypeUuidCache);
-      }
-    }
-
-    // Delete rows that are no longer in the data
-    for (const existingRowId of existingRowIds) {
-      if (existingRowId && !incomingRowIds.has(existingRowId)) {
-        await this.deleteSectionRow(client, existingRowId);
-      }
-    }
-
-    await client.query("COMMIT");
-    return updatedSection;
-  } catch (error) {
-    console.error(error);
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-  }
-
-private async updateSectionRow(
-  client: any,
-  sectionId: string,
-  row: Partial<any>,
-  inputTypeUuidCache: Record<string, string>,
-) {
-  // Update row basic info
-  const updateRowQuery = `UPDATE rows SET name = $1, row_order = $2 WHERE id = $3 RETURNING *`;
-  const rowResult = await client.query(updateRowQuery, [
-    row?.name ?? "",
-    row?.row_order ?? 0,
-    row.row_id,
-  ]);
-  const updatedRow = rowResult.rows[0];
-
-  // Get existing columns for this row
-  const existingColumnsQuery = `SELECT column_id FROM rows_columns WHERE row_id = $1`;
-  const existingColumnsResult = await client.query(existingColumnsQuery, [row.row_id]);
-  const existingColumnIds = new Set(existingColumnsResult.rows.map((c: any) => c.column_id as string));
-  console.log("Existing Column IDs:", existingColumnIds);
-  const incomingColumnIds = new Set<string>();
-  const columns = Array.isArray(row?.column)
-  ? row.column
-  : Array.isArray(row?.columns)
-  ? row.columns
-  : [];
-  console.log(columns)
-
-  // Process incoming columns
-  for (const col of columns) {
-    if (col.column_id && existingColumnIds.has(col.column_id)) {
-      // Update existing column
-      await this.updateColumnWithInputs(client, col.column_id, col, inputTypeUuidCache);
-      incomingColumnIds.add(col.column_id);
-    } else if (!col.column_id) {
-      // Insert new column
-      await this.insertColumnWithInputs(client, updatedRow.id, col, inputTypeUuidCache);
-    }
-  }
-
-  // Delete columns that are no longer in the data
-  for (const existingColumnId of existingColumnIds) {
-    if (existingColumnId && !incomingColumnIds.has(existingColumnId.toString())) {
-      await this.deleteColumn(client, existingColumnId.toString());
-    }
-  }
-}
-
-private async updateColumnWithInputs(
-  client: any,
-  columnId: string,
-  col: Partial<any>,
-  inputTypeUuidCache: Record<string, string>,
-) {
-  // Update column basic info
-  const updateColumnQuery = `UPDATE columns SET name = $1, width = $2, column_order = $3 WHERE id = $4 RETURNING *`;
-  const columnResult = await client.query(updateColumnQuery, [
-    col?.name ?? "",
-    Math.ceil(col?.width ?? 100),
-    col?.column_order ?? 0,
-    columnId,
-  ]);
-    const existingInputsGroupQuery = `SELECT section_input_group_id FROM column_inputs_group_join WHERE column_id = $1`;
-    const existingInputsGroupResult = await client.query(existingInputsGroupQuery, [columnId]);
-    const existingInputGroupIds = new Set(existingInputsGroupResult.rows.map((i: any) => i.section_input_group_id));
-    const incomingInputGroupIds = new Set<string>();
-    const inputGroups = Array.isArray(col?.inputGroup) ? col.inputGroup : [];
-    for (const inputGroup of inputGroups) {
-      if (inputGroup.section_input_group_id && existingInputGroupIds.has(inputGroup.section_input_group_id)) {
-        // Update existing input
-        await this.updateInputGroupForColumn(client, inputGroup.section_input_group_id, inputGroup, inputTypeUuidCache);
-        incomingInputGroupIds.add(inputGroup.section_input_group_id);
-      } else if (!inputGroup.section_input_group_id) {
-        // Insert new input
-        await this.insertInputGroupForColumn(client, columnId, inputGroup, inputTypeUuidCache);
-      }
-  }
-  // Delete inputs that are no longer in the data
-  for (const existingInputGroupId of existingInputGroupIds) {
-    if (existingInputGroupId && !incomingInputGroupIds.has(existingInputGroupId.toString())) {
-      await this.deleteInputGroup(client, existingInputGroupId.toString());
-    }
-  }
-}
-private async updateInputGroupForColumn(
-  client: any,
-  inputGroupId: string,
-  input: Partial<any>,
-  inputTypeUuidCache: Record<string, string>,
-) {
-  // Implementation for updating input group for a column
-  try {
-  // Get existing inputs for this column
-  const existingInputsQuery = `SELECT input_id FROM section_input_group_join WHERE section_input_group_id = $1`;
-  const existingInputsResult = await client.query(existingInputsQuery, [inputGroupId]);
-  const existingInputIds = new Set(existingInputsResult.rows.map((i: any) => i.input_id));
-  console.log("Existing Input IDs:", existingInputIds);
-  const incomingInputIds = new Set<string>();
-  const inputs = Array.isArray(input?.inputs) ? input.inputs : [];
-  console.log(inputs)
-  // Process incoming inputs
-  for (const input of inputs) {
-    if (input.input_id && existingInputIds.has(input.input_id)) {
-      // Update existing input
-      await this.updateInputForColumn(client, input.input_id, input, inputTypeUuidCache);
-      incomingInputIds.add(input.input_id);
-    } else if (!input.input_id) {
-      // Insert new input
-      await this.insertInputForColumn(client, inputGroupId, input, inputTypeUuidCache);
-    }
-  }
-  // Delete inputs that are no longer in the data
-  for (const existingInputId of existingInputIds) {
-    if (existingInputId && !incomingInputIds.has(existingInputId.toString())) {
-      await this.deleteInput(client, existingInputId.toString());
-    }
-  }
-  } catch (error) {
-    
-  }
-}
-private async updateInputForColumn(
-  client: any,
-  inputId: string,
-  input: Partial<any>,
-  inputTypeUuidCache: Record<string, string>,
-) {
-  const inputType = input?.type == "inputtype_1"
-    ? 'INPUT_TYPE_1'
-    : input?.type == "inputtype_2"
-      ? "INPUT_TYPE_2"
-      : "INPUT_TYPE_3";
-
-  let inputTypeUUID: any = inputTypeUuidCache[inputType];
-  if (!inputTypeUUID) {
-    inputTypeUUID = await this.inputEntityService.getInputTypeUUIDByName(inputType ?? "");
-    inputTypeUuidCache[inputType] = inputTypeUUID;
-  }
-
-  const updateInputQuery = `UPDATE inputs SET type_id = $1, label = $2, input_entity_id = $3, show_label = $4, quantity_id = $5, show_quantity = $6, input_order = $7, is_bold = $8, font_size = $9, extra_note = $10, is_deleted = $11 WHERE id = $12 RETURNING *`;
-  const inputResult = await client.query(updateInputQuery, [
-    inputTypeUUID,
-    input?.name ?? "",
-    input?.input_entity_id ?? null,
-    input?.show_label ? 1 : 0,
-    input?.quantity_id ?? null,
-    (input?.show_quantity ? 1 : 0),
-    input?.input_order ?? 0,
-    input?.is_bold ?? 0,
-    input?.font_size ?? 16,
-    input?.extra_note ?? "",
-    input?.is_deleted ?? 0,
-    inputId,
-  ]);
-  return inputResult.rows[0];
-}
-
-  private async deleteSectionRow(client: any, rowId: string) {
-  // Delete all inputs group and column_inputs for this row
-  const deleteInputsGroupQuery = `
-    DELETE FROM column_inputs_group_join
-    WHERE section_input_group_id IN (
-      SELECT sig.id FROM section_input_groups sig
-      LEFT JOIN rows_columns rc ON rc.column_id = sig.column_id
-      WHERE rc.row_id = $1
-    )
-      WHERE rc.row_id = $1
-    )
-  `;
-  await client.query(deleteInputsGroupQuery, [rowId]);
-    const deleteInputsQuery = `
-    DELETE FROM section_input_group_join
-    WHERE input_id IN (
-      SELECT sigj.id FROM section_input_group_join sigj
-      LEFT JOIN column_inputs_group_join cigj ON cigj.section_input_group_id = sigj.section_input_group_id
-      LEFT JOIN rows_columns rc ON rc.column_id = cigj.column_id
-      WHERE rc.row_id = $1
-    )
-      WHERE rc.row_id = $1
-    )
-  `;
-    await client.query(deleteInputsQuery, [rowId]);
-  // Delete all columns for this row
-  const deleteColumnsQuery = `
-    DELETE FROM rows_columns
-    WHERE row_id = $1
-  `;
-  await client.query(deleteColumnsQuery, [rowId]);
-
-  // Delete the row itself
-  const deleteRowQuery = `
-    DELETE FROM rows WHERE id = $1
-  `;
-  await client.query(deleteRowQuery, [rowId]);
-
-  // Delete section_rows association
-  const deleteSectionRowQuery = `
-    DELETE FROM section_rows WHERE row_id = $1
-  `;
-  await client.query(deleteSectionRowQuery, [rowId]);
-}
-
-  private async deleteColumn(client: any, columnId: string) {
-  // Delete all inputs associated with this column
-  const deleteInputsQuery = `
-    DELETE FROM section_input_group_join
-    WHERE input_id IN (
-      SELECT i.id FROM section_input_groups i
-      LEFT JOIN section_input_group_join sigj ON sigj.section_input_group_id = i.id
-      LEFT JOIN column_inputs_group_join cigj ON cigj.section_input_group_id = sigj.section_input_group_id
-      WHERE cigj.column_id = $1
-    )
-  `;
-    await client.query(deleteInputsQuery, [columnId]);
-    
-  // Delete all inputsGroup associated with this column
-  const deleteInputsGroupQuery = `
-    DELETE FROM column_inputs_group_join
-    WHERE section_input_group_id IN (
-      SELECT sig.id FROM section_input_groups sig
-      LEFT JOIN column_inputs_group_join cigj ON cigj.section_input_group_id = sig.id
-      WHERE cigj.column_id = $1
-    )
-  `;
-    await client.query(deleteInputsGroupQuery, [columnId]);
-
-  // Delete rows_columns association
-  const deleteRowColumnQuery = `
-    DELETE FROM rows_columns WHERE column_id = $1
-  `;
-  await client.query(deleteRowColumnQuery, [columnId]);
-
-  // Delete the column itself
-  const deleteColumnQuery = `
-    DELETE FROM columns WHERE id = $1
-  `;
-  await client.query(deleteColumnQuery, [columnId]);
-}
-private async deleteInputGroup(client: any, inputGroupId: string) {
-  // Delete column_inputs association
-  const deleteColumnInputQuery = `
-    DELETE FROM column_inputs_group_join WHERE section_input_group_id = $1
-  `;
-  await client.query(deleteColumnInputQuery, [inputGroupId]);
-
-  // Delete the input itself
-  const deleteInputQuery = `
-    DELETE FROM section_input_groups WHERE id = $1
-  `;
-  await client.query(deleteInputQuery, [inputGroupId]);
-}
-private async deleteInput(client: any, inputId: string) {
-  // Delete column_inputs association
-  const deleteColumnInputQuery = `
-    DELETE FROM column_inputs WHERE input_id = $1
-  `;
-  await client.query(deleteColumnInputQuery, [inputId]);
-
-  // Delete the input itself
-  const deleteInputQuery = `
-    DELETE FROM inputs WHERE id = $1
-  `;
-  await client.query(deleteInputQuery, [inputId]);
-}
-  async getAllSectionInformationById(id: string | string[] , filters: Record<string, unknown> = {}) {
+  async getAllSectionInformationById(id: string | string[], filters: Record<string, unknown> = {}) {
     const sql = `SELECT sec.*,
                     sec_row.section_id,
                     sec_row.row_id AS section_row_id,
@@ -596,7 +456,7 @@ private async deleteInput(client: any, inputId: string) {
         if (!inputGroup) {
           inputGroup = {
             section_input_group_id: item.section_input_group_id,
-            input_group_order:item?.input_group_order,
+            input_group_order: item?.input_group_order,
             inputs: [],
           };
           column.inputGroup.push(inputGroup);
@@ -607,11 +467,11 @@ private async deleteInput(client: any, inputId: string) {
         let input = column.inputGroup[inputGroupIndex].inputs.find((existing: any) => existing.input_id === item.input_id);
         const dropdownOptionValue = { value: item.dropdown_option_value, id: item.dropdown_option_id };
         const quantityOptionValue = { value: item.quantity_option_value, id: item.quantity_option_id };
-        const hasOptions = (input:Array<any>, options:any) => {
+        const hasOptions = (input: Array<any>, options: any) => {
           if (!input) return false;
           let hasOption: Boolean = false;
           input.forEach((existing: any) => {
-            if(existing.id == options.id) {
+            if (existing.id == options.id) {
               hasOption = true;
             }
           });
@@ -638,8 +498,8 @@ private async deleteInput(client: any, inputId: string) {
             extra_note: item.extra_note,
           };
           column.inputGroup[inputGroupIndex].inputs.push(input);
-        } else{
-          if(dropdownOptionValue && !hasOptions(input.dropdown_option_values, dropdownOptionValue)) {
+        } else {
+          if (dropdownOptionValue && !hasOptions(input.dropdown_option_values, dropdownOptionValue)) {
             input.dropdown_option_values.push(dropdownOptionValue);
           }
           if (quantityOptionValue && !hasOptions(input.quantity_option_values, quantityOptionValue)) {

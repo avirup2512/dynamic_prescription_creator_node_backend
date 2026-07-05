@@ -471,7 +471,7 @@ WHERE
                                     'servingUnit', r.serving_unit,
                                     'preparationTime', r.preparation_time,
                                     'instructions', r.instructions,
-
+                                    'type_name', 'INPUT_TYPE_4',
                                     'nutrients',
                                     (
                                         SELECT

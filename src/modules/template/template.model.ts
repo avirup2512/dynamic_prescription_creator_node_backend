@@ -95,15 +95,45 @@ export class TemplateModel extends BaseModel<Template> {
     inputTypeUuidCache: Record<string, string>,
     processedIds?: any
   ) {
-    const addRowQuery = `INSERT INTO template_sections (template_id, section_id, is_header, is_body, is_footer,section_order,is_visible) VALUES ($1, $2, $3, $4, $5, $6,$7) RETURNING *`;
-    const sectionResult = await client.query(addRowQuery, [
+    const upsertSectionQuery = `INSERT INTO template_sections (
+    id,
+    template_id,
+    section_id,
+    is_header,
+    is_body,
+    is_footer,
+    section_order,
+    is_visible
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8
+)
+ON CONFLICT (id)
+DO UPDATE SET
+    template_id   = EXCLUDED.template_id,
+    section_id    = EXCLUDED.section_id,
+    is_header     = EXCLUDED.is_header,
+    is_body       = EXCLUDED.is_body,
+    is_footer     = EXCLUDED.is_footer,
+    section_order = EXCLUDED.section_order,
+    is_visible    = EXCLUDED.is_visible
+RETURNING id`;
+    const sectionResult = await client.query(upsertSectionQuery, [
+      data.template_section_id,   // <- Stable UUID from React
       templateId,
       sectionId,
       sectionType === "header" ? 1 : 0,
       sectionType === "body" ? 1 : 0,
       sectionType === "footer" ? 1 : 0,
-      data?.SectionOrder ?? 0,
-      data?.isVisible === true ? 1 : 0
+      data.section_order ?? 1,
+      data.isVisible ? 1 : 0,
     ]);
     const insertedSection = sectionResult.rows[0];
 
@@ -122,13 +152,34 @@ export class TemplateModel extends BaseModel<Template> {
     inputTypeUuidCache: Record<string, string>,
     processedIds?: any
   ) {
-    const addRowQuery = `INSERT INTO template_rows (name, row_order) VALUES ($1, $2) RETURNING *`;
-    const rowResult = await client.query(addRowQuery, [row?.name ?? "", row?.row_order ?? 0]);
+    const upsertRowQuery = `INSERT INTO template_rows (
+    id,
+    name,
+    row_order
+)
+VALUES (
+    $1,
+    $2,
+    $3
+)
+ON CONFLICT (id)
+DO UPDATE SET
+    name = EXCLUDED.name,
+    row_order = EXCLUDED.row_order,
+    updated_at = now()
+RETURNING id`;
+    const rowResult = await client.query(upsertRowQuery, [
+      row.template_row_id,     // Stable UUID from React
+      row.row_name ?? "",
+      row.row_order ?? 1
+    ]);
     const insertedRow = rowResult.rows[0];
     if (processedIds) processedIds.rows.add(insertedRow.id);
 
-    const addSectionRowsQuery = `INSERT INTO template_section_rows (section_id, row_id) VALUES ($1, $2) RETURNING *`;
-    await client.query(addSectionRowsQuery, [sectionId, insertedRow.id]);
+    const addSectionRowsQuery = `INSERT INTO template_section_rows (section_id, row_id,row_order) VALUES ($1, $2, $3) ON CONFLICT (section_id, row_id)
+    DO NOTHING
+    RETURNING id`;
+    await client.query(addSectionRowsQuery, [sectionId, insertedRow.id, row.row_order ?? 1]);
 
     const columns = Array.isArray(row?.column)
       ? row.column
@@ -149,17 +200,46 @@ export class TemplateModel extends BaseModel<Template> {
     inputTypeUuidCache: Record<string, string>,
     processedIds?: any
   ) {
-    const addColumnQuery = `INSERT INTO template_columns (name, width, column_order) VALUES ($1, $2, $3) RETURNING *`;
-    const columnResult = await client.query(addColumnQuery, [
-      col?.name ?? "",
+    const upsertColumnQuery = `INSERT INTO template_columns (
+    id,
+    name,
+    width,
+    column_order
+    )
+    VALUES (
+        $1,
+        $2,
+        $3,
+        $4
+    )
+    ON CONFLICT (id)
+    DO UPDATE SET
+        name = EXCLUDED.name,
+        width = EXCLUDED.width,
+        column_order = EXCLUDED.column_order,
+        updated_at = now()
+    RETURNING id`;
+    const columnResult = await client.query(upsertColumnQuery, [
+      col.template_column_id,      // Stable UUID from React
+      col.column_name ?? "",
       Math.ceil(col?.width ?? 100),
-      col?.column_order ?? 0,
+      col.column_order ?? 1
     ]);
     const insertedColumn = columnResult.rows[0];
     if (processedIds) processedIds.columns.add(insertedColumn.id);
 
-    const addRowColumnQuery = `INSERT INTO template_rows_columns (column_id, row_id) VALUES ($1, $2) RETURNING *`;
-    await client.query(addRowColumnQuery, [insertedColumn.id, rowId]);
+    const addRowColumnQuery = `INSERT INTO template_rows_columns (
+    row_id,
+    column_id
+    )
+    VALUES (
+        $1,
+        $2
+    )
+    ON CONFLICT (row_id, column_id)
+    DO NOTHING
+    RETURNING id`;
+    await client.query(addRowColumnQuery, [rowId, insertedColumn.id]);
 
     const inputGroups = Array.isArray(col?.inputGroup) ? col.inputGroup : [];
 
@@ -174,14 +254,40 @@ export class TemplateModel extends BaseModel<Template> {
     inputTypeUuidCache: Record<string, string>,
     processedIds?: any
   ) {
-    const addInputGroupQuery = `INSERT INTO template_input_groups (template_column_id, input_group_order) VALUES ($1, $2) RETURNING *`;
-    const inputGroupResult = await client.query(addInputGroupQuery, [
+    const upsertInputGroupQuery = `INSERT INTO template_input_groups (
+    id,
+    template_column_id,
+    input_group_order
+    )
+    VALUES (
+        $1,
+        $2,
+        $3
+    )
+    ON CONFLICT (id)
+    DO UPDATE SET
+        template_column_id = EXCLUDED.template_column_id,
+        input_group_order = EXCLUDED.input_group_order,
+        updated_at = now()
+    RETURNING id`;
+    const inputGroupResult = await client.query(upsertInputGroupQuery, [
+      inputGroup.template_input_group_id, // Stable UUID from React
       columnId,
-      inputGroup?.input_group_order ?? 0
+      inputGroup.input_group_order ?? 0
     ]);
     const insertedInputGroup = inputGroupResult.rows[0];
-    const addColumnInputQuery = `INSERT INTO template_column_input_group_join (template_input_group_id, column_id) VALUES ($1, $2) RETURNING *`;
-    await client.query(addColumnInputQuery, [insertedInputGroup.id, columnId]);
+    const addColumnInputQuery = `INSERT INTO template_column_input_group_join (
+    column_id,
+    template_input_group_id
+    )
+    VALUES (
+        $1,
+        $2
+    )
+    ON CONFLICT (column_id, template_input_group_id)
+    DO NOTHING
+    RETURNING id`;
+    await client.query(addColumnInputQuery, [columnId, insertedInputGroup.id]);
     if (inputGroup?.template_input_group_id) {
       this.previousTemplateSectionInputGroupId.set(inputGroup?.template_input_group_id, insertedInputGroup.id); // Store the mapping of previous input_group_id to the new inserted
     }
@@ -190,8 +296,18 @@ export class TemplateModel extends BaseModel<Template> {
       this.previousTemplateSectionInputGroupId.has(inputGroup.or_input_group_id)
     ) {
       const template_input_group_id = this.previousTemplateSectionInputGroupId.get(inputGroup.or_input_group_id);
-      const addColumnInputOrQuery = `INSERT INTO template_inputs_group_or (or_input_group_id, parent_input_group_id) VALUES ($1, $2) RETURNING *`;
-      await client.query(addColumnInputOrQuery, [insertedInputGroup.id, template_input_group_id]);
+      const addColumnInputOrQuery = `INSERT INTO template_inputs_group_or (
+    parent_input_group_id,
+    or_input_group_id
+    )
+    VALUES (
+        $1,
+        $2
+    )
+    ON CONFLICT (parent_input_group_id, or_input_group_id)
+    DO NOTHING
+    RETURNING id`;
+      await client.query(addColumnInputOrQuery, [template_input_group_id, insertedInputGroup.id]);
     }
     for (const input of inputGroup?.inputs ?? []) {
       await this.insertInputForColumn(client, insertedInputGroup.id, input, inputTypeUuidCache, processedIds);
@@ -225,24 +341,63 @@ export class TemplateModel extends BaseModel<Template> {
 
     const quantityId = input?.quantity_id ?? null;
 
-    const addInputQuery = `
-    INSERT INTO template_inputs
-      (type_id, label, input_entity_id, show_label, quantity_id, is_bold, font_size, extra_note, is_deleted, show_quantity, input_order)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    RETURNING *
-  `;
-    const inputResult = await client.query(addInputQuery, [
+    const upsertTemplateInputQuery = `
+    INSERT INTO template_inputs (
+    id,
+    type_id,
+    label,
+    input_entity_id,
+    show_label,
+    quantity_id,
+    is_bold,
+    font_size,
+    extra_note,
+    is_deleted,
+    show_quantity,
+    input_order
+    )
+    VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $11,
+        $12
+    )
+    ON CONFLICT (id)
+    DO UPDATE SET
+        type_id        = EXCLUDED.type_id,
+        label          = EXCLUDED.label,
+        input_entity_id= EXCLUDED.input_entity_id,
+        show_label     = EXCLUDED.show_label,
+        quantity_id    = EXCLUDED.quantity_id,
+        is_bold        = EXCLUDED.is_bold,
+        font_size      = EXCLUDED.font_size,
+        extra_note     = EXCLUDED.extra_note,
+        is_deleted     = EXCLUDED.is_deleted,
+        show_quantity  = EXCLUDED.show_quantity,
+        input_order    = EXCLUDED.input_order,
+        updated_at     = now()
+    RETURNING id`;
+    const inputResult = await client.query(upsertTemplateInputQuery, [
+      input.template_input_id,               // Stable UUID from React
       inputTypeUUID,
-      input?.name ?? "",
-      input?.input_entity_id ?? "",
-      input?.show_label ?? 0,
-      quantityId,
-      input?.is_bold ?? 0,
-      input?.font_size ?? 14,
-      input?.extra_note ?? 0,
-      input?.is_deleted ?? 0,
-      input?.show_quantity ?? 0,
-      input?.input_order ?? 0,
+      input.input_name ?? "",
+      input.id,
+      input.show_label ?? 1,
+      input.quantity_id,
+      input.is_bold ?? 0,
+      input.font_size ?? 14,
+      input.extra_note ?? 0,
+      input.is_deleted ?? 0,
+      input.show_quantity ?? 0,
+      input.input_order ?? 0
     ]);
     const insertedInput = inputResult.rows[0];
 
@@ -258,29 +413,55 @@ export class TemplateModel extends BaseModel<Template> {
       this.previousTemplateSectionInputId.has(input.or_input_id)
     ) {
       const template_input_id = this.previousTemplateSectionInputId.get(input.or_input_id);
-      const addColumnInputOrQuery = `INSERT INTO template_inputs_or (or_input_id, parent_input_id) VALUES ($1, $2) RETURNING *`;
-      await client.query(addColumnInputOrQuery, [insertedInput.id, template_input_id]);
+      const addColumnInputOrQuery = `INSERT INTO template_inputs_or (
+    parent_input_id,
+    or_input_id
+    )
+    VALUES (
+        $1,
+        $2
+    )
+    ON CONFLICT (parent_input_id, or_input_id)
+    DO NOTHING`;
+      await client.query(addColumnInputOrQuery, [template_input_id, insertedInput.id]);
     }
 
-    const addInputGroupJoinQuery = `INSERT INTO template_input_group_join (template_input_group_id, template_input_id) VALUES ($1, $2) RETURNING *`;
+    const addInputGroupJoinQuery = `INSERT INTO template_input_group_join (
+    template_input_group_id,
+    template_input_id
+    )
+    VALUES (
+        $1,
+        $2
+    )
+    ON CONFLICT (template_input_group_id, template_input_id)
+    DO NOTHING`;
     await client.query(addInputGroupJoinQuery, [inputGroupId, insertedInput.id]);
     // Adding dropdown entity value if present
-    if (inputType === "INPUT_TYPE_2" && input?.dropdown_option_id && input?.input_entity_id) {
-      // Validate that both the input_entity_id and dropdown_option_id exist
-      const entityValidationQuery = `SELECT id FROM input_entities WHERE id = $1`;
-      const entityValidationResult = await client.query(entityValidationQuery, [input.input_entity_id]);
-
-      const optionValidationQuery = `SELECT id FROM dropdown_options WHERE id = $1`;
-      const optionValidationResult = await client.query(optionValidationQuery, [input.dropdown_option_id]);
-
-      if (entityValidationResult.rows.length > 0 && optionValidationResult.rows.length > 0) {
-        const addDropdownOptionQuery = `INSERT INTO template_input_dropdown_options (template_input_id, dropdown_option_id) VALUES ($1, $2) RETURNING *`;
-        await client.query(addDropdownOptionQuery, [insertedInput.id, input.dropdown_option_id]);
-      } else {
-        console.warn(
-          `Skipping dropdown entity value insertion: entity_id="${input.input_entity_id}" valid=${entityValidationResult.rows.length > 0}, option_id="${input.dropdown_option_id}" valid=${optionValidationResult.rows.length > 0}`
-        );
-      }
+    if (
+      inputType === "INPUT_TYPE_2" &&
+      input.dropdown_option_id &&
+      input.input_entity_id
+    ) {
+      await client.query(
+        `
+        INSERT INTO template_input_dropdown_options (
+        template_input_id,
+        dropdown_option_id
+      )
+      SELECT
+          $1,
+          d.id
+      FROM dropdown_options d
+      WHERE d.id = $2
+      ON CONFLICT (template_input_id, dropdown_option_id)
+      DO NOTHING
+        `,
+        [
+          insertedInput.id,
+          input.dropdown_option_id
+        ]
+      );
     }
     // ADDING quantity option if present
     if (input?.quantity_option_id) {
@@ -289,16 +470,45 @@ export class TemplateModel extends BaseModel<Template> {
     }
     // ADDING Recipe If Present
     if (inputType === "INPUT_TYPE_5" && input?.recipe_id) {
-      const addRecipeQuery = `INSERT INTO template_recipe_join (template_input_id, recipe_id) VALUES ($1, $2) RETURNING *`;
+      const addRecipeQuery = `INSERT INTO template_recipe_join (
+      template_input_id,
+      recipe_id
+      )
+      VALUES (
+          $1,
+          $2
+      )
+      ON CONFLICT (template_input_id, recipe_id)
+      DO NOTHING`;
       await client.query(addRecipeQuery, [insertedInput.id, input.recipe_id]);
     }
     // ADDING Food If Present
     if (inputType === "INPUT_TYPE_6" && input?.food_id) {
-      const addFoodQuery = `INSERT INTO template_food_join (template_input_id, food_id) VALUES ($1, $2) RETURNING *`;
+      const addFoodQuery = `INSERT INTO template_food_join (
+    template_input_id,
+    food_id
+    )
+    VALUES (
+        $1,
+        $2
+    )
+    ON CONFLICT (template_input_id, food_id)
+    DO NOTHING`;
       await client.query(addFoodQuery, [insertedInput.id, input.food_id]);
     }
-    const addInputValueQuery = `INSERT INTO template_inputs_value (template_input_id, value) VALUES ($1, $2) RETURNING *`;
-    await client.query(addInputValueQuery, [insertedInput.id, input?.template_input_value ?? ""]);
+    const addInputValueQuery = `INSERT INTO template_inputs_value (
+    template_input_id,
+    value
+    )
+    VALUES (
+        $1,
+        $2
+    )
+    ON CONFLICT (template_input_id)
+    DO UPDATE SET
+        value = EXCLUDED.value
+    RETURNING id`;
+    await client.query(addInputValueQuery, [insertedInput.id, (input?.template_input_value || input?.value) ?? ""]);
 
     const addQuantityValueQuery = `INSERT INTO template_inputs_quantity_value (template_input_id, value) VALUES ($1, $2) RETURNING *`;
     await client.query(addQuantityValueQuery, [insertedInput.id, input?.quantityTextValue ?? input?.template_quantity_value ?? ""]);
@@ -312,8 +522,23 @@ export class TemplateModel extends BaseModel<Template> {
       : "";
     if (note) {
       await client.query(
-        `INSERT INTO template_input_extranotes (template_input_id, note, is_deleted) VALUES ($1, $2, 0)`,
-        [templateInputId, note]
+        `INSERT INTO template_input_extranotes (
+    template_input_id,
+    note,
+    is_deleted
+    )
+    VALUES (
+        $1,
+        $2,
+        $3
+    )
+    ON CONFLICT (template_input_id)
+    DO UPDATE SET
+        note = EXCLUDED.note,
+        is_deleted = EXCLUDED.is_deleted,
+        updated_at = now()
+    RETURNING id`,
+        [templateInputId, note, 0]
       );
     }
   }
@@ -339,23 +564,6 @@ export class TemplateModel extends BaseModel<Template> {
         [templateName, id]
       );
 
-      // 3. Delete existing sections for this template.
-      //    CASCADE on template_sections propagates to:
-      //      template_section_rows → template_rows_columns → template_column_inputs
-      //      → template_inputs_or, template_input_quantity_options,
-      //        template_inputs_value, template_inputs_quantity_value,
-      //        template_input_extranotes
-      //    (template_rows and template_columns themselves are NOT cascade-deleted
-      //     from template_sections — they must be cleaned up explicitly via
-      //     template_section_rows and template_rows_columns cascades.)
-      //
-      //    Deletion order that respects FK constraints:
-      //      a) Collect all section IDs for this template
-      //      b) Collect all row IDs linked to those sections
-      //      c) Collect all column IDs linked to those rows
-      //      d) Delete template_sections (cascades junction rows)
-      //      e) Delete orphaned template_rows and template_columns
-
       const sectionIdsResult = await client.query(
         `SELECT id FROM template_sections WHERE template_id = $1`,
         [id]
@@ -379,34 +587,12 @@ export class TemplateModel extends BaseModel<Template> {
           );
           columnIds = columnIdsResult.rows.map((r: any) => r.column_id);
         }
-
-        // Delete template_sections — cascades:
-        //   template_section_rows, template_rows_columns, template_column_inputs,
-        //   template_inputs_or, template_input_quantity_options,
-        //   template_inputs_value, template_inputs_quantity_value,
-        //   template_input_extranotes
-        await client.query(
-          `DELETE FROM template_sections WHERE template_id = $1`,
-          [id]
-        );
-
-        // Clean up orphaned rows and columns (no CASCADE from template_sections to these)
-        if (rowIds.length) {
-          await client.query(
-            `DELETE FROM template_rows WHERE id = ANY($1::uuid[])`,
-            [rowIds]
-          );
-        }
         if (columnIds.length) {
           const inputGroupIdsResult = await client.query(
             `SELECT template_input_group_id FROM template_column_input_group_join WHERE column_id = ANY($1::uuid[])`,
             [columnIds]
           );
           const inputGroupIds: string[] = inputGroupIdsResult.rows.map((r: any) => r.template_input_group_id);
-          await client.query(
-            `DELETE FROM template_columns WHERE id = ANY($1::uuid[])`,
-            [columnIds]
-          );
           if (inputGroupIds.length) {
             // Collect input IDs before deleting columns so we can clean up template_inputs
             const inputIdsResult = await client.query(
@@ -414,18 +600,6 @@ export class TemplateModel extends BaseModel<Template> {
               [inputGroupIds]
             );
             const inputIds: string[] = inputIdsResult.rows.map((r: any) => r.template_input_id);
-
-            await client.query(
-              `DELETE FROM template_input_groups WHERE id = ANY($1::uuid[])`,
-              [inputGroupIds]
-            );
-
-            if (inputIds.length) {
-              await client.query(
-                `DELETE FROM template_inputs WHERE id = ANY($1::uuid[])`,
-                [inputIds]
-              );
-            }
           }
         }
       }
@@ -696,13 +870,13 @@ export class TemplateModel extends BaseModel<Template> {
 
       const currentRow = rowMap[rowKey];
 
-      let column = item.column_id
-        ? currentRow.columns.find((col: any) => col.column_id === item.column_id)
+      let column = item.template_column_id
+        ? currentRow.columns.find((col: any) => col.template_column_id === item.template_column_id)
         : undefined;
 
       if (!column && item.column_id) {
         column = {
-          column_id: item.column_id,
+          template_column_id: item.column_id,
           column_name: item.column_name,
           width: item.column_width,
           column_order: item.column_order,
@@ -753,7 +927,7 @@ export class TemplateModel extends BaseModel<Template> {
           }
           if (!input) {
             input = {
-              input_id: item.input_id,
+              template_input_id: item.input_id,
               input_name: item.input_name,
               input_type_id: item.input_type_id,
               show_label: item.show_label,

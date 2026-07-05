@@ -7,6 +7,7 @@ export const templateInputOrSchema = {
   is_parent_a_group SMALLINT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_template_input_or UNIQUE (parent_input_id, or_input_id),
   CONSTRAINT fk_template_inputs_or_parent FOREIGN KEY (parent_input_id) REFERENCES template_inputs(id) ON DELETE CASCADE,
   CONSTRAINT fk_template_inputs_or_or FOREIGN KEY (or_input_id) REFERENCES template_inputs(id) ON DELETE CASCADE
 );`

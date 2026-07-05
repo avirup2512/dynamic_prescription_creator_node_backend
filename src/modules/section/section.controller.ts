@@ -15,25 +15,24 @@ class SectionController extends BaseController<Section> {
   }
   async createSection(req: ExtendedRequest, res: Response) {
     const data = req.body?.data;
-    data.user_id = req?.user ? req.user.id : null;
+    const user_id = req?.user ? req.user.id : null;
     try {
-      const result = await (this.service as typeof SectionService).createSection(data);
-      res.status(201).json({success: true,data:result});
+      const result = await (this.service as typeof SectionService).createSection(data, user_id);
+      res.status(201).json({ success: true, data: result });
     } catch (error) {
       res.status(500).json({ error: "Failed to create section", details: error instanceof Error ? error.message : error });
     }
   }
-  async getAllSection(req: ExtendedRequest, res: Response)
-  {
+  async getAllSection(req: ExtendedRequest, res: Response) {
     const service = this.service as typeof SectionService;
-    const user_id =  req?.user ? req.user.id : null;
-    const result = await service.getAllSections({user_id} as Record<string, unknown>);
+    const user_id = req?.user ? req.user.id : null;
+    const result = await service.getAllSections({ user_id } as Record<string, unknown>);
     return res.status(200).json({ success: true, data: result.rows });
   }
   async getByAllSectionInformationById(req: ExtendedRequest, res: Response) {
     const service = this.service as typeof SectionService;
-    const user_id =  req?.user ? req.user.id : null;
-    const result = await service.getAllSectionInformationById(req.params.id, {user_id} as Record<string, unknown>);
+    const user_id = req?.user ? req.user.id : null;
+    const result = await service.getAllSectionInformationById(req.params.id, { user_id } as Record<string, unknown>);
     if (!result) {
       return res.status(404).json({ success: false, message: "Section not found" });
     }
@@ -42,10 +41,10 @@ class SectionController extends BaseController<Section> {
   async updateSection(req: ExtendedRequest, res: Response) {
     const data = req.body?.data;
     const sectionId = req.params.id as string;
-    data.user_id = req?.user ? req.user.id : null;
+    const user_id = req?.user ? req.user.id : null;
     try {
-      const result = await (this.service as typeof SectionService).updateSection(sectionId, data);
-      res.status(200).json({success: true,data:result});
+      const result = await (this.service as typeof SectionService).updateSection(data, user_id);
+      res.status(200).json({ success: true, data: result });
     } catch (error) {
       res.status(500).json({ error: "Failed to update section", details: error instanceof Error ? error.message : error });
     }

@@ -11,6 +11,7 @@ export const templateInputSchema = {
   extra_note SMALLINT NOT NULL DEFAULT 0,
   input_order INTEGER NOT NULL DEFAULT 0,
   is_deleted SMALLINT NOT NULL DEFAULT 0,
+  is_visible SMALLINT NOT NULL DEFAULT 1,
   input_entity_id UUID,
   quantity_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

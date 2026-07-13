@@ -3,6 +3,7 @@ import { Template } from "../../types/entities";
 import { pool, query } from "../../database/client";
 import { InputEntityService } from "../inputEntity/inputEntity.service";
 import { FoodAndRecipeService } from "../foodAndRecipes/foodAndRecipes.service";
+import { v4 as uuidv4 } from "uuid";
 
 export class TemplateModel extends BaseModel<Template> {
   inputEntityService: InputEntityService;
@@ -320,18 +321,7 @@ RETURNING id`;
     inputTypeUuidCache: Record<string, string>,
     processedIds?: any
   ) {
-    console.log(input);
-    const inputType = input?.type === "inputtype_1"
-      ? "INPUT_TYPE_1"
-      : input?.type === "inputtype_2"
-        ? "INPUT_TYPE_2"
-        : input?.type === "inputtype_3"
-          ? "INPUT_TYPE_3"
-          : input?.type === "inputtype_4"
-            ? "INPUT_TYPE_4"
-            : input?.type === "inputtype_5"
-              ? "INPUT_TYPE_5"
-              : "INPUT_TYPE_6";
+    const inputType = input?.type_name || input?.input_type_name;
 
     let inputTypeUUID: any = inputTypeUuidCache[inputType];
     if (!inputTypeUUID) {
@@ -387,9 +377,9 @@ RETURNING id`;
     RETURNING id`;
     const inputResult = await client.query(upsertTemplateInputQuery, [
       input.template_input_id,               // Stable UUID from React
-      inputTypeUUID,
+      input?.input_type_id || inputTypeUUID,
       input.input_name ?? "",
-      input.id,
+      input.id || input?.input_entity_id,
       input.show_label ?? 1,
       input.quantity_id,
       input.is_bold ?? 0,
@@ -399,13 +389,12 @@ RETURNING id`;
       input.show_quantity ?? 0,
       input.input_order ?? 0
     ]);
-    const insertedInput = inputResult.rows[0];
 
     if (input?.input_id != null) {
-      this.previousTemplateSectionInputId.set(input.input_id, insertedInput.id);
+      this.previousTemplateSectionInputId.set(input.input_id, input.template_input_id);
     }
 
-    if (processedIds) processedIds.inputs.add(insertedInput.id);
+    if (processedIds) processedIds.inputs.add(input.template_input_id);
 
     // OR relationship
     if (
@@ -423,7 +412,7 @@ RETURNING id`;
     )
     ON CONFLICT (parent_input_id, or_input_id)
     DO NOTHING`;
-      await client.query(addColumnInputOrQuery, [template_input_id, insertedInput.id]);
+      await client.query(addColumnInputOrQuery, [template_input_id, input.template_input_id]);
     }
 
     const addInputGroupJoinQuery = `INSERT INTO template_input_group_join (
@@ -436,29 +425,28 @@ RETURNING id`;
     )
     ON CONFLICT (template_input_group_id, template_input_id)
     DO NOTHING`;
-    await client.query(addInputGroupJoinQuery, [inputGroupId, insertedInput.id]);
+    await client.query(addInputGroupJoinQuery, [inputGroupId, input.template_input_id]);
     // Adding dropdown entity value if present
     if (
       inputType === "INPUT_TYPE_2" &&
-      input.dropdown_option_id &&
-      input.input_entity_id
+      input.dropdown_option_id
     ) {
+      console.log("======================================================================================================================================================================================================================================================================================================================================================================================================================================================")
+      console.log(input?.dropdown_option_id)
+      console.log(input.template_input_id)
       await client.query(
-        `
-        INSERT INTO template_input_dropdown_options (
+        `INSERT INTO template_input_dropdown_options (
         template_input_id,
         dropdown_option_id
-      )
-      SELECT
-          $1,
-          d.id
-      FROM dropdown_options d
-      WHERE d.id = $2
-      ON CONFLICT (template_input_id, dropdown_option_id)
-      DO NOTHING
+        )
+        VALUES ($1, $2)
+        ON CONFLICT (template_input_id)
+        DO UPDATE SET
+            dropdown_option_id = EXCLUDED.dropdown_option_id,
+            updated_at = now();
         `,
         [
-          insertedInput.id,
+          input.template_input_id,
           input.dropdown_option_id
         ]
       );
@@ -466,7 +454,7 @@ RETURNING id`;
     // ADDING quantity option if present
     if (input?.quantity_option_id) {
       const addQuantityOptionQuery = `INSERT INTO template_input_quantity_options (template_input_id, quantity_option_id) VALUES ($1, $2) RETURNING *`;
-      await client.query(addQuantityOptionQuery, [insertedInput.id, input.quantity_option_id ?? input?.template_input_quantity_option_id ?? null]);
+      await client.query(addQuantityOptionQuery, [input.template_input_id, input.quantity_option_id ?? input?.template_input_quantity_option_id ?? null]);
     }
     // ADDING Recipe If Present
     if (inputType === "INPUT_TYPE_5" && input?.recipe_id) {
@@ -480,7 +468,7 @@ RETURNING id`;
       )
       ON CONFLICT (template_input_id, recipe_id)
       DO NOTHING`;
-      await client.query(addRecipeQuery, [insertedInput.id, input.recipe_id]);
+      await client.query(addRecipeQuery, [input.template_input_id, input.recipe_id]);
     }
     // ADDING Food If Present
     if (inputType === "INPUT_TYPE_6" && input?.food_id) {
@@ -494,7 +482,7 @@ RETURNING id`;
     )
     ON CONFLICT (template_input_id, food_id)
     DO NOTHING`;
-      await client.query(addFoodQuery, [insertedInput.id, input.food_id]);
+      await client.query(addFoodQuery, [input.template_input_id, input.food_id]);
     }
     const addInputValueQuery = `INSERT INTO template_inputs_value (
     template_input_id,
@@ -508,12 +496,28 @@ RETURNING id`;
     DO UPDATE SET
         value = EXCLUDED.value
     RETURNING id`;
-    await client.query(addInputValueQuery, [insertedInput.id, (input?.template_input_value || input?.value) ?? ""]);
+    await client.query(addInputValueQuery, [input.template_input_id, (input?.template_input_value || input?.value) ?? ""]);
+
+    if (inputType === "INPUT_TYPE_7") {
+      const addInputValueQuery = `INSERT INTO template_input_blank_text_value (
+    template_input_id,
+    value
+    )
+    VALUES (
+        $1,
+        $2
+    )
+    ON CONFLICT (template_input_id)
+    DO UPDATE SET
+        value = EXCLUDED.value
+    RETURNING id`;
+      await client.query(addInputValueQuery, [input.template_input_id, (input?.template_input_value || input?.value) ?? ""]);
+    }
 
     const addQuantityValueQuery = `INSERT INTO template_inputs_quantity_value (template_input_id, value) VALUES ($1, $2) RETURNING *`;
-    await client.query(addQuantityValueQuery, [insertedInput.id, input?.quantityTextValue ?? input?.template_quantity_value ?? ""]);
+    await client.query(addQuantityValueQuery, [input.template_input_id, input?.quantityTextValue ?? input?.template_quantity_value ?? ""]);
 
-    await this.insertTemplateInputExtranotes(client, insertedInput.id, input);
+    await this.insertTemplateInputExtranotes(client, input.template_input_id, input);
   }
 
   private async insertTemplateInputExtranotes(client: any, templateInputId: string, input: Partial<any>) {
@@ -543,117 +547,1154 @@ RETURNING id`;
     }
   }
 
-  async updateTemplate(id: string, data: Partial<any>) {
+  // async updateTemplate(id: string, data: Partial<any>) {
+  //   const client = await pool.connect();
+  //   try {
+  //     await client.query("BEGIN");
+
+  //     // 1. Verify the template exists
+  //     const existingResult = await client.query(
+  //       `SELECT * FROM templates WHERE id = $1 AND is_deleted = 0`,
+  //       [id]
+  //     );
+  //     if (!existingResult.rows.length) {
+  //       throw new Error(`Template with id "${id}" not found.`);
+  //     }
+
+  //     // 2. Update the template root record (only mutable fields)
+  //     const templateName = data.name ?? existingResult.rows[0].name;
+  //     await client.query(
+  //       `UPDATE templates SET name = $1, updated_at = now() WHERE id = $2`,
+  //       [templateName, id]
+  //     );
+
+  //     const sectionIdsResult = await client.query(
+  //       `SELECT id FROM template_sections WHERE template_id = $1`,
+  //       [id]
+  //     );
+  //     const sectionIds: string[] = sectionIdsResult.rows.map((r: any) => r.id);
+
+  //     let rowIds: string[] = [];
+  //     let columnIds: string[] = [];
+
+  //     if (sectionIds.length) {
+  //       const rowIdsResult = await client.query(
+  //         `SELECT row_id FROM template_section_rows WHERE section_id = ANY($1::uuid[])`,
+  //         [sectionIds]
+  //       );
+  //       rowIds = rowIdsResult.rows.map((r: any) => r.row_id);
+
+  //       if (rowIds.length) {
+  //         const columnIdsResult = await client.query(
+  //           `SELECT column_id FROM template_rows_columns WHERE row_id = ANY($1::uuid[])`,
+  //           [rowIds]
+  //         );
+  //         columnIds = columnIdsResult.rows.map((r: any) => r.column_id);
+  //       }
+  //       if (columnIds.length) {
+  //         const inputGroupIdsResult = await client.query(
+  //           `SELECT template_input_group_id FROM template_column_input_group_join WHERE column_id = ANY($1::uuid[])`,
+  //           [columnIds]
+  //         );
+  //         const inputGroupIds: string[] = inputGroupIdsResult.rows.map((r: any) => r.template_input_group_id);
+  //         if (inputGroupIds.length) {
+  //           // Collect input IDs before deleting columns so we can clean up template_inputs
+  //           const inputIdsResult = await client.query(
+  //             `SELECT template_input_id FROM template_input_group_join WHERE template_input_group_id = ANY($1::uuid[])`,
+  //             [inputGroupIds]
+  //           );
+  //           const inputIds: string[] = inputIdsResult.rows.map((r: any) => r.template_input_id);
+  //         }
+  //       }
+  //     }
+
+  //     // 4. Re-insert sections (same logic as create)
+  //     const inputTypeUuidCache: Record<string, string> = {};
+  //     const processedIds = {
+  //       rows: new Set<string>(),
+  //       columns: new Set<string>(),
+  //       inputs: new Set<string>(),
+  //     };
+
+  //     // NOTE: Using for...of instead of forEach to correctly await async calls.
+  //     // The original create flow uses forEach which does NOT await — a bug that
+  //     // causes sections to be processed after COMMIT in some cases.
+  //     if (data?.body?.length) {
+  //       for (const section of data.body) {
+  //         await this.insertTemplateSection(
+  //           client, id, section.id || section.section_id, section, "body", inputTypeUuidCache, processedIds
+  //         );
+  //       }
+  //     }
+  //     if (data?.header?.length) {
+  //       for (const section of data.header) {
+  //         await this.insertTemplateSection(
+  //           client, id, section.id || section.section_id, section, "header", inputTypeUuidCache, processedIds
+  //         );
+  //       }
+  //     }
+  //     if (data?.footer?.length) {
+  //       for (const section of data.footer) {
+  //         await this.insertTemplateSection(
+  //           client, id, section.id || section.section_id, section, "footer", inputTypeUuidCache, processedIds
+  //         );
+  //       }
+  //     }
+
+  //     await client.query("COMMIT");
+  //     this.previousTemplateSectionInputId.clear();
+
+  //     // Return the updated template record
+  //     const updatedResult = await client.query(
+  //       `SELECT * FROM templates WHERE id = $1`,
+  //       [id]
+  //     );
+  //     return updatedResult.rows[0];
+  //   } catch (error) {
+  //     console.error(error);
+  //     await client.query("ROLLBACK");
+  //     this.previousTemplateSectionInputId.clear();
+  //     throw error;
+  //   } finally {
+  //     client.release();
+  //   }
+  // }
+  async updateTemplate(
+    templateId: string,
+    data: Partial<any>
+  ) {
     const client = await pool.connect();
+
     try {
+
       await client.query("BEGIN");
 
-      // 1. Verify the template exists
-      const existingResult = await client.query(
-        `SELECT * FROM templates WHERE id = $1 AND is_deleted = 0`,
-        [id]
+      //--------------------------------------------------------
+      // Verify template exists
+      //--------------------------------------------------------
+
+      const templateResult = await client.query(
+        `
+            SELECT id,name
+            FROM templates
+            WHERE id=$1
+            AND is_deleted=0
+            `,
+        [templateId]
       );
-      if (!existingResult.rows.length) {
-        throw new Error(`Template with id "${id}" not found.`);
+
+      if (!templateResult.rowCount) {
+        throw new Error("Template not found.");
       }
 
-      // 2. Update the template root record (only mutable fields)
-      const templateName = data.name ?? existingResult.rows[0].name;
+      //--------------------------------------------------------
+      // Update root template
+      //--------------------------------------------------------
+
       await client.query(
-        `UPDATE templates SET name = $1, updated_at = now() WHERE id = $2`,
-        [templateName, id]
+        `
+            UPDATE templates
+            SET
+                name=$1,
+                updated_at=NOW()
+            WHERE id=$2
+            `,
+        [
+          data.name ?? templateResult.rows[0].name,
+          templateId
+        ]
       );
 
-      const sectionIdsResult = await client.query(
-        `SELECT id FROM template_sections WHERE template_id = $1`,
-        [id]
-      );
-      const sectionIds: string[] = sectionIdsResult.rows.map((r: any) => r.id);
+      //--------------------------------------------------------
+      // Cache input type UUIDs
+      //--------------------------------------------------------
 
-      let rowIds: string[] = [];
-      let columnIds: string[] = [];
-
-      if (sectionIds.length) {
-        const rowIdsResult = await client.query(
-          `SELECT row_id FROM template_section_rows WHERE section_id = ANY($1::uuid[])`,
-          [sectionIds]
-        );
-        rowIds = rowIdsResult.rows.map((r: any) => r.row_id);
-
-        if (rowIds.length) {
-          const columnIdsResult = await client.query(
-            `SELECT column_id FROM template_rows_columns WHERE row_id = ANY($1::uuid[])`,
-            [rowIds]
-          );
-          columnIds = columnIdsResult.rows.map((r: any) => r.column_id);
-        }
-        if (columnIds.length) {
-          const inputGroupIdsResult = await client.query(
-            `SELECT template_input_group_id FROM template_column_input_group_join WHERE column_id = ANY($1::uuid[])`,
-            [columnIds]
-          );
-          const inputGroupIds: string[] = inputGroupIdsResult.rows.map((r: any) => r.template_input_group_id);
-          if (inputGroupIds.length) {
-            // Collect input IDs before deleting columns so we can clean up template_inputs
-            const inputIdsResult = await client.query(
-              `SELECT template_input_id FROM template_input_group_join WHERE template_input_group_id = ANY($1::uuid[])`,
-              [inputGroupIds]
-            );
-            const inputIds: string[] = inputIdsResult.rows.map((r: any) => r.template_input_id);
-          }
-        }
-      }
-
-      // 4. Re-insert sections (same logic as create)
       const inputTypeUuidCache: Record<string, string> = {};
-      const processedIds = {
-        rows: new Set<string>(),
-        columns: new Set<string>(),
-        inputs: new Set<string>(),
-      };
 
-      // NOTE: Using for...of instead of forEach to correctly await async calls.
-      // The original create flow uses forEach which does NOT await — a bug that
-      // causes sections to be processed after COMMIT in some cases.
-      if (data?.body?.length) {
-        for (const section of data.body) {
-          await this.insertTemplateSection(
-            client, id, section.id || section.section_id, section, "body", inputTypeUuidCache, processedIds
-          );
-        }
-      }
-      if (data?.header?.length) {
-        for (const section of data.header) {
-          await this.insertTemplateSection(
-            client, id, section.id || section.section_id, section, "header", inputTypeUuidCache, processedIds
-          );
-        }
-      }
-      if (data?.footer?.length) {
-        for (const section of data.footer) {
-          await this.insertTemplateSection(
-            client, id, section.id || section.section_id, section, "footer", inputTypeUuidCache, processedIds
-          );
-        }
-      }
+      //--------------------------------------------------------
+      // Synchronize Header
+      //--------------------------------------------------------
+
+      await this.syncTemplateSections(
+        client,
+        templateId,
+        data.header ?? [],
+        "header");
+
+      //--------------------------------------------------------
+      // Synchronize Body
+      //--------------------------------------------------------
+
+      await this.syncTemplateSections(
+        client,
+        templateId,
+        data.body ?? [],
+        "body");
+
+      //--------------------------------------------------------
+      // Synchronize Footer
+      //--------------------------------------------------------
+
+      await this.syncTemplateSections(
+        client,
+        templateId,
+        data.footer ?? [],
+        "footer");
+
+      //--------------------------------------------------------
+      // Finished
+      //--------------------------------------------------------
 
       await client.query("COMMIT");
+
       this.previousTemplateSectionInputId.clear();
 
-      // Return the updated template record
-      const updatedResult = await client.query(
-        `SELECT * FROM templates WHERE id = $1`,
-        [id]
+      const updated = await client.query(
+        `
+            SELECT *
+            FROM templates
+            WHERE id=$1
+            `,
+        [templateId]
       );
-      return updatedResult.rows[0];
-    } catch (error) {
-      console.error(error);
+
+      return updated.rows[0];
+
+    } catch (err) {
+      console.log(err)
       await client.query("ROLLBACK");
+
       this.previousTemplateSectionInputId.clear();
-      throw error;
+
+      throw err;
+
     } finally {
+
       client.release();
+
     }
+  }
+
+  private async syncTemplateSections(
+    client: any,
+    templateId: string,
+    sections: Partial<any>[],
+    type: "header" | "body" | "footer"
+  ) {
+    // Existing sections of this template/type
+    const existingResult = await client.query(
+      `
+    SELECT id
+    FROM template_sections
+    WHERE template_id = $1
+      AND is_header = $2
+      AND is_body = $3
+      AND is_footer = $4
+    `,
+      [
+        templateId,
+        type === "header" ? 1 : 0,
+        type === "body" ? 1 : 0,
+        type === "footer" ? 1 : 0,
+      ]
+    );
+
+    const existingSectionIds = new Set<string>(
+      existingResult.rows.map((r: any) => r.id)
+    );
+
+    const processedSectionIds = new Set<string>();
+
+    for (const section of sections) {
+      const templateSectionId =
+        section.template_section_id ?? uuidv4();
+
+      processedSectionIds.add(templateSectionId);
+
+      // UPSERT Section
+      await client.query(
+        `
+      INSERT INTO template_sections
+      (
+        id,
+        template_id,
+        section_id,
+        is_header,
+        is_body,
+        is_footer,
+        section_order,
+        is_visible
+      )
+      VALUES
+      (
+        $1,$2,$3,$4,$5,$6,$7,$8
+      )
+      ON CONFLICT (id)
+      DO UPDATE SET
+        section_id    = EXCLUDED.section_id,
+        section_order = EXCLUDED.section_order,
+        is_visible    = EXCLUDED.is_visible,
+        is_header     = EXCLUDED.is_header,
+        is_body       = EXCLUDED.is_body,
+        is_footer     = EXCLUDED.is_footer
+      `,
+        [
+          templateSectionId,
+          templateId,
+          section.section_id,
+          type === "header" ? 1 : 0,
+          type === "body" ? 1 : 0,
+          type === "footer" ? 1 : 0,
+          section.section_order ?? 0,
+          section.is_visible ?? 1,
+        ]
+      );
+
+      // Sync rows
+      await this.syncRows(
+        client,
+        templateSectionId,
+        section.rows ?? []
+      );
+    }
+
+    // Delete removed sections
+    for (const sectionId of existingSectionIds) {
+      if (!processedSectionIds.has(sectionId)) {
+        await client.query(
+          `DELETE FROM template_sections WHERE id = $1`,
+          [sectionId]
+        );
+      }
+    }
+  }
+  private async syncRows(
+    client: any,
+    templateSectionId: string,
+    rows: Partial<any>[]
+  ) {
+    // Existing rows for this section
+    const existingResult = await client.query(
+      `
+    SELECT row_id
+    FROM template_section_rows
+    WHERE section_id = $1
+    `,
+      [templateSectionId]
+    );
+
+    const existingRowIds = new Set<string>(
+      existingResult.rows.map((r: any) => r.row_id)
+    );
+
+    const processedRowIds = new Set<string>();
+
+    for (const row of rows) {
+      const rowId = row.template_row_id ?? uuidv4();
+
+      processedRowIds.add(rowId);
+
+      // UPSERT Row
+      await client.query(
+        `
+      INSERT INTO template_rows
+      (
+        id,
+        name,
+        row_order
+      )
+      VALUES
+      (
+        $1,$2,$3
+      )
+      ON CONFLICT (id)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        row_order = EXCLUDED.row_order,
+        updated_at = NOW()
+      `,
+        [
+          rowId,
+          row.row_name ?? "",
+          row.row_order ?? 1,
+        ]
+      );
+
+      // Ensure mapping exists
+      await client.query(
+        `
+      INSERT INTO template_section_rows
+      (
+        section_id,
+        row_id,
+        row_order
+      )
+      VALUES
+      (
+        $1,$2,$3
+      )
+      ON CONFLICT (section_id,row_id)
+      DO NOTHING
+      `,
+        [
+          templateSectionId,
+          rowId,
+          row.row_order ?? 1
+        ]
+      );
+
+      // Sync Columns
+      await this.syncColumns(
+        client,
+        rowId,
+        row.columns ?? []
+      );
+    }
+    // Delete removed rows
+    for (const rowId of existingRowIds) {
+      if (!processedRowIds.has(rowId)) {
+        await client.query(
+          `DELETE FROM template_rows WHERE id = $1`,
+          [rowId]
+        );
+      }
+    }
+  }
+
+  private async syncColumns(
+    client: any,
+    rowId: string,
+    columns: Partial<any>[]
+  ) {
+    // Existing columns for this row
+    const existingResult = await client.query(
+      `
+    SELECT column_id
+    FROM template_rows_columns
+    WHERE row_id = $1
+    `,
+      [rowId]
+    );
+
+    const existingColumnIds = new Set<string>(
+      existingResult.rows.map((r: any) => r.column_id)
+    );
+
+    const processedColumnIds = new Set<string>();
+
+    for (const column of columns) {
+      const columnId = column.template_column_id ?? uuidv4();
+
+      processedColumnIds.add(columnId);
+
+      // UPSERT Column
+      await client.query(
+        `
+      INSERT INTO template_columns
+      (
+        id,
+        name,
+        width,
+        column_order
+      )
+      VALUES
+      (
+        $1,$2,$3,$4
+      )
+      ON CONFLICT (id)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        width = EXCLUDED.width,
+        column_order = EXCLUDED.column_order,
+        updated_at = NOW()
+      `,
+        [
+          columnId,
+          column.column_name ?? "",
+          Math.ceil(column.width ?? 100),
+          column.column_order ?? 0,
+        ]
+      );
+
+      // Ensure Row <-> Column mapping exists
+      await client.query(
+        `
+      INSERT INTO template_rows_columns
+      (
+        row_id,
+        column_id
+      )
+      VALUES
+      (
+        $1,$2
+      )
+      ON CONFLICT (row_id,column_id)
+      DO NOTHING
+      `,
+        [
+          rowId,
+          columnId,
+        ]
+      );
+
+      // Sync Input Groups
+      await this.syncInputGroups(
+        client,
+        columnId,
+        column.inputGroup ?? []
+      );
+    }
+
+    // Delete removed columns
+    for (const columnId of existingColumnIds) {
+      if (!processedColumnIds.has(columnId)) {
+        await client.query(
+          `
+    DELETE FROM template_columns
+    WHERE id = $1
+    `,
+          [columnId])
+      }
+    }
+  }
+  private async syncInputGroups(
+    client: any,
+    columnId: string,
+    inputGroups: Partial<any>[]
+  ) {
+    // Existing Input Groups for this column
+    const existingResult = await client.query(
+      `
+    SELECT template_input_group_id
+    FROM template_column_input_group_join
+    WHERE column_id = $1
+    `,
+      [columnId]
+    );
+
+    const existingGroupIds = new Set<string>(
+      existingResult.rows.map((r: any) => r.template_input_group_id)
+    );
+
+    const processedGroupIds = new Set<string>();
+
+    for (const group of inputGroups) {
+      const groupId = group.template_input_group_id ?? uuidv4();
+
+      processedGroupIds.add(groupId);
+
+      // UPSERT Input Group
+      await client.query(
+        `
+      INSERT INTO template_input_groups
+      (
+        id,
+        template_column_id,
+        input_group_order
+      )
+      VALUES
+      (
+        $1,$2,$3
+      )
+      ON CONFLICT (id)
+      DO UPDATE SET
+        template_column_id = EXCLUDED.template_column_id,
+        input_group_order = EXCLUDED.input_group_order,
+        updated_at = NOW()
+      `,
+        [
+          groupId,
+          columnId,
+          group.input_group_order ?? 0,
+        ]
+      );
+
+      // Ensure Column <-> Group mapping exists
+      await client.query(
+        `
+      INSERT INTO template_column_input_group_join
+      (
+        column_id,
+        template_input_group_id
+      )
+      VALUES
+      (
+        $1,$2
+      )
+      ON CONFLICT (column_id, template_input_group_id)
+      DO NOTHING
+      `,
+        [
+          columnId,
+          groupId,
+        ]
+      );
+      await this.syncInputGroupOr(client, groupId, group);
+      // Sync Inputs
+      await this.syncInputs(
+        client,
+        groupId,
+        group.inputs ?? []
+      );
+    }
+
+    // Delete removed groups
+    for (const groupId of existingGroupIds) {
+      if (!processedGroupIds.has(groupId)) {
+        await this.deleteInputGroup(client, groupId);
+      }
+    }
+  }
+
+  private async deleteInputGroup(
+    client: any,
+    groupId: string
+  ) {
+    await client.query(
+      `
+    DELETE FROM template_input_groups
+    WHERE id = $1
+    `,
+      [groupId]
+    );
+  }
+  private async syncInputs(
+    client: any,
+    inputGroupId: string,
+    inputs: Partial<any>[]
+  ) {
+    // Existing inputs in this group
+    const existingResult = await client.query(
+      `
+    SELECT template_input_id
+    FROM template_input_group_join
+    WHERE template_input_group_id = $1
+    `,
+      [inputGroupId]
+    );
+
+    const existingInputIds = new Set<string>(
+      existingResult.rows.map((r: any) => r.template_input_id)
+    );
+
+    const processedInputIds = new Set<string>();
+
+    for (const input of inputs) {
+      const inputId = input.template_input_id ?? uuidv4();
+
+      processedInputIds.add(inputId);
+
+      // UPSERT template_inputs
+      await this.upsertTemplateInput(
+        client,
+        inputId,
+        input
+      );
+
+      // Ensure InputGroup <-> Input mapping exists
+      await client.query(
+        `
+      INSERT INTO template_input_group_join
+      (
+          template_input_group_id,
+          template_input_id
+      )
+      VALUES
+      (
+          $1,
+          $2
+      )
+      ON CONFLICT
+      (
+          template_input_group_id,
+          template_input_id
+      )
+      DO NOTHING
+      `,
+        [
+          inputGroupId,
+          inputId,
+        ]
+      );
+      await this.syncInputStyle(client, inputId, input);
+      await this.syncDropdownOption(client, inputId, input);
+
+      await this.syncRecipe(client, inputId, input);
+
+      await this.syncFood(client, inputId, input);
+
+      await this.syncInputValue(client, inputId, input);
+
+      await this.syncQuantityValue(client, inputId, input);
+
+      await this.syncExtraNote(client, inputId, input);
+
+      await this.syncInputOr(client, inputId, input);
+    }
+    // Delete removed inputs
+    for (const inputId of existingInputIds) {
+      if (!processedInputIds.has(inputId)) {
+        await client.query(
+          `
+    DELETE FROM template_inputs
+    WHERE id = $1
+    `,
+          [inputId]
+        );
+      }
+    }
+  }
+  private async upsertTemplateInput(
+    client: any,
+    templateInputId: string,
+    input: Partial<any>
+  ): Promise<string> {
+
+    let inputTypeId = input.input_type_id || input?.type_id;
+
+    if (!inputTypeId && (input.input_type_name || input.type_name)) {
+      inputTypeId = await this.inputEntityService.getInputTypeUUIDByName(
+        (input.input_type_name || input.type_name) ?? ""
+      );
+    }
+
+    await client.query(
+      `
+    INSERT INTO template_inputs
+    (
+        id,
+        type_id,
+        label,
+        show_label,
+        show_quantity,
+        quantity_id,
+        is_bold,
+        font_size,
+        extra_note,
+        input_order,
+        is_deleted,
+        input_entity_id,
+        is_visible
+    )
+    VALUES
+    (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+    )
+    ON CONFLICT (id)
+    DO UPDATE
+    SET
+        type_id         = EXCLUDED.type_id,
+        label           = EXCLUDED.label,
+        show_label      = EXCLUDED.show_label,
+        show_quantity   = EXCLUDED.show_quantity,
+        quantity_id     = EXCLUDED.quantity_id,
+        is_bold         = EXCLUDED.is_bold,
+        font_size       = EXCLUDED.font_size,
+        extra_note      = EXCLUDED.extra_note,
+        input_order     = EXCLUDED.input_order,
+        is_deleted      = EXCLUDED.is_deleted,
+        input_entity_id = EXCLUDED.input_entity_id,
+        is_visible      = EXCLUDED.is_visible,
+        updated_at      = NOW()
+    `,
+      [
+        templateInputId,
+        inputTypeId,
+        (input.input_name || input?.name) ?? "",
+        input.show_label ? 1 : 0,
+        input.show_quantity ? 1 : 0,
+        input.quantity_id ?? null,
+        input.is_bold ?? 0,
+        input.font_size ?? 14,
+        input.extra_note ?? 0,
+        input.input_order ?? 0,
+        input.is_deleted ?? 0,
+        input.input_entity_id ?? null,
+        input.is_visible ?? 1,
+      ]
+    );
+
+    return templateInputId;
+  }
+  private async syncInputStyle(
+    client: any,
+    templateInputId: string,
+    input: Partial<any>
+  ) {
+    await client.query(
+      `
+    INSERT INTO template_input_styles
+    (
+        template_input_id,
+
+        font_family,
+        font_size,
+        font_weight,
+        font_style,
+        text_decoration,
+
+        text_color,
+        background_color,
+
+        text_align,
+
+        line_height,
+        letter_spacing,
+
+        padding_top,
+        padding_right,
+        padding_bottom,
+        padding_left,
+
+        margin_top,
+        margin_right,
+        margin_bottom,
+        margin_left,
+
+        border_width,
+        border_color,
+        border_radius,
+
+        width,
+        height,
+
+        updated_at
+    )
+    VALUES
+    (
+        $1,
+
+        $2,$3,$4,$5,$6,
+
+        $7,$8,
+
+        $9,
+
+        $10,$11,
+
+        $12,$13,$14,$15,
+
+        $16,$17,$18,$19,
+
+        $20,$21,$22,
+
+        $23,$24,
+
+        NOW()
+    )
+    ON CONFLICT (template_input_id)
+    DO UPDATE SET
+
+        font_family = EXCLUDED.font_family,
+        font_size = EXCLUDED.font_size,
+        font_weight = EXCLUDED.font_weight,
+        font_style = EXCLUDED.font_style,
+        text_decoration = EXCLUDED.text_decoration,
+
+        text_color = EXCLUDED.text_color,
+        background_color = EXCLUDED.background_color,
+
+        text_align = EXCLUDED.text_align,
+
+        line_height = EXCLUDED.line_height,
+        letter_spacing = EXCLUDED.letter_spacing,
+
+        padding_top = EXCLUDED.padding_top,
+        padding_right = EXCLUDED.padding_right,
+        padding_bottom = EXCLUDED.padding_bottom,
+        padding_left = EXCLUDED.padding_left,
+
+        margin_top = EXCLUDED.margin_top,
+        margin_right = EXCLUDED.margin_right,
+        margin_bottom = EXCLUDED.margin_bottom,
+        margin_left = EXCLUDED.margin_left,
+
+        border_width = EXCLUDED.border_width,
+        border_color = EXCLUDED.border_color,
+        border_radius = EXCLUDED.border_radius,
+
+        width = EXCLUDED.width,
+        height = EXCLUDED.height,
+
+        updated_at = NOW()
+    `,
+      [
+        templateInputId,
+
+        input.font_family ?? "Arial",
+        input.font_size ?? 14,
+        input.font_weight ?? 400,
+        input.font_style ?? 0,
+        input.text_decoration ?? 0,
+
+        input.text_color ?? "#000000",
+        input.background_color ?? null,
+
+        input.text_align ?? 0,
+
+        input.line_height ?? 1.2,
+        input.letter_spacing ?? 0,
+
+        input.padding_top ?? 0,
+        input.padding_right ?? 0,
+        input.padding_bottom ?? 0,
+        input.padding_left ?? 0,
+
+        input.margin_top ?? 0,
+        input.margin_right ?? 0,
+        input.margin_bottom ?? 0,
+        input.margin_left ?? 0,
+
+        input.border_width ?? 0,
+        input.border_color ?? null,
+        input.border_radius ?? 0,
+
+        input.width ?? null,
+        input.height ?? null
+      ]
+    );
+  }
+  private async syncDropdownOption(
+    client: any,
+    templateInputId: string,
+    input: Partial<any>
+  ) {
+    await client.query(
+      `DELETE FROM template_input_dropdown_options
+     WHERE template_input_id = $1`,
+      [templateInputId]
+    );
+
+    if (!input.dropdown_option_id) return;
+
+    await client.query(
+      `
+    INSERT INTO template_input_dropdown_options
+    (
+      template_input_id,
+      dropdown_option_id
+    )
+    VALUES ($1,$2)
+    `,
+      [
+        templateInputId,
+        input.dropdown_option_id,
+      ]
+    );
+  }
+  private async syncRecipe(
+    client: any,
+    templateInputId: string,
+    input: Partial<any>
+  ) {
+    await client.query(
+      `DELETE FROM template_recipe_join
+     WHERE template_input_id = $1`,
+      [templateInputId]
+    );
+
+    if (!input.recipe_id) return;
+
+    await client.query(
+      `
+    INSERT INTO template_recipe_join
+    (
+      template_input_id,
+      recipe_id
+    )
+    VALUES($1,$2)
+    `,
+      [
+        templateInputId,
+        input.recipe_id,
+      ]
+    );
+  }
+  private async syncFood(
+    client: any,
+    templateInputId: string,
+    input: Partial<any>
+  ) {
+    await client.query(
+      `DELETE FROM template_food_join
+     WHERE template_input_id = $1`,
+      [templateInputId]
+    );
+
+    if (!input.food_id) return;
+
+    await client.query(
+      `
+    INSERT INTO template_food_join
+    (
+      template_input_id,
+      food_id
+    )
+    VALUES($1,$2)
+    `,
+      [
+        templateInputId,
+        input.food_id,
+      ]
+    );
+  }
+  private async syncInputValue(
+    client: any,
+    templateInputId: string,
+    input: Partial<any>
+  ) {
+    await client.query(
+      `DELETE FROM template_inputs_value
+     WHERE template_input_id = $1`,
+      [templateInputId]
+    );
+    const value = input.template_input_value || input?.value;
+    if (
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+      return;
+    }
+
+    await client.query(
+      `
+    INSERT INTO template_inputs_value
+    (
+      template_input_id,
+      value
+    )
+    VALUES($1,$2)
+    `,
+      [
+        templateInputId,
+        value,
+      ]
+    );
+  }
+  private async syncQuantityValue(
+    client: any,
+    templateInputId: string,
+    input: Partial<any>
+  ) {
+    await client.query(
+      `DELETE FROM template_inputs_quantity_value
+     WHERE template_input_id = $1`,
+      [templateInputId]
+    );
+
+    if (
+      input.template_quantity_value === undefined ||
+      input.template_quantity_value === null ||
+      input.template_quantity_value === ""
+    ) {
+      return;
+    }
+
+    await client.query(
+      `
+    INSERT INTO template_inputs_quantity_value
+    (
+      template_input_id,
+      value
+    )
+    VALUES($1,$2)
+    `,
+      [
+        templateInputId,
+        input.template_quantity_value,
+      ]
+    );
+  }
+  private async syncExtraNote(
+    client: any,
+    templateInputId: string,
+    input: Partial<any>
+  ) {
+    await client.query(
+      `DELETE FROM template_input_extranotes
+     WHERE template_input_id = $1`,
+      [templateInputId]
+    );
+
+    if (
+      input.template_input_extranotes === undefined ||
+      input.template_input_extranotes === null ||
+      input.template_input_extranotes === ""
+    ) {
+      return;
+    }
+
+    await client.query(
+      `
+    INSERT INTO template_input_extranotes
+    (
+      template_input_id,
+      note,
+      is_deleted
+    )
+    VALUES($1,$2,0)
+    `,
+      [
+        templateInputId,
+        input.template_input_extranotes,
+      ]
+    );
+  }
+  private async syncInputOr(
+    client: any,
+    templateInputId: string,
+    input: Partial<any>
+  ) {
+    await client.query(
+      `DELETE FROM template_inputs_or
+     WHERE parent_input_id = $1`,
+      [templateInputId]
+    );
+
+    if (!input.or_input_id) return;
+
+    await client.query(
+      `
+    INSERT INTO template_inputs_or
+    (
+      parent_input_id,
+      or_input_id
+    )
+    VALUES($1,$2)
+    `,
+      [
+        templateInputId,
+        input.or_input_id,
+      ]
+    );
+  }
+  private async syncInputGroupOr(
+    client: any,
+    inputGroupId: string,
+    inputGroup: Partial<any>
+  ) {
+    await client.query(
+      `DELETE FROM template_inputs_group_or
+     WHERE parent_input_group_id = $1`,
+      [inputGroupId]
+    );
+    if (!inputGroup.or_input_group_id) return;
+
+    await client.query(
+      `
+    INSERT INTO template_inputs_group_or
+    (
+      parent_input_group_id,
+      or_input_group_id
+    )
+    VALUES($1,$2)
+    `,
+      [
+        inputGroupId,
+        inputGroup.or_input_group_id,
+      ]
+    );
   }
   async getAllTemplateInfoById(id: string | string[], filters: Record<string, unknown> = {}) {
 
@@ -687,11 +1728,41 @@ RETURNING id`;
                   tpl_i.quantity_id,
                   tpl_i.input_entity_id,
                   tpl_i.input_order AS input_order,
-                  tpl_i.is_bold,
-                  tpl_i.font_size,
                   tpl_i.extra_note,
+                  tpl_i.is_visible as input_visibility,
                   tpl_extra.id AS template_input_extranote_id,
                   tpl_extra.note AS template_input_extranote_note,
+                  tis.font_family,
+                  tis.font_size,
+                  tis.font_weight,
+                  tis.font_style,
+                  tis.text_decoration,
+
+                  tis.text_color,
+                  tis.background_color,
+
+                  tis.text_align,
+
+                  tis.line_height,
+                  tis.letter_spacing,
+
+                  tis.padding_top,
+                  tis.padding_right,
+                  tis.padding_bottom,
+                  tis.padding_left,
+
+                  tis.margin_top,
+                  tis.margin_right,
+                  tis.margin_bottom,
+                  tis.margin_left,
+
+                  tis.border_width,
+                  tis.border_color,
+                  tis.border_radius,
+
+                  tis.width,
+                  tis.height,
+
                   ie.name AS input_entity_name,
                   ievalue.value AS input_entity_value,
                   it.name AS input_type_name,
@@ -703,6 +1774,7 @@ RETURNING id`;
                   quantopt.id AS quantity_option_id,
                   tpl_inp_qty_opt.quantity_option_id AS template_input_quantity_option_id,
                   tpl_input_val.value AS template_input_value,
+                  tpl_blank_input_val.value AS template_blank_input_value,
                   tpl_quantity_val.value AS template_quantity_value,
                   quant.name AS quantity_name,
                   tio.parent_input_id AS or_linked_input_id,
@@ -724,11 +1796,14 @@ RETURNING id`;
                LEFT JOIN template_food_join tfj ON tfj.template_input_id = tpl_i.id
                LEFT JOIN dropdown_options dopt ON dopt.id = tido.dropdown_option_id
                LEFT JOIN input_entity_values ievalue ON ievalue.input_entity_id = ie.id
-               LEFT JOIN input_types it ON it.id = ie.type_id
+               LEFT JOIN input_types it ON it.id = tpl_i.type_id
                LEFT JOIN template_input_quantity_options tpl_inp_qty_opt ON tpl_inp_qty_opt.template_input_id = tpl_i.id
                LEFT JOIN quantity_options quantopt ON quantopt.quantity_id = tpl_i.quantity_id
                LEFT JOIN quantities quant ON quant.id = tpl_i.quantity_id
                LEFT JOIN template_inputs_value tpl_input_val ON tpl_input_val.template_input_id = tpl_i.id
+                LEFT JOIN template_input_blank_text_value tpl_blank_input_val ON tpl_blank_input_val.template_input_id = tpl_i.id
+              LEFT JOIN template_input_styles tis
+              ON tis.template_input_id = tpl_i.id
                LEFT JOIN template_inputs_quantity_value tpl_quantity_val ON tpl_quantity_val.template_input_id = tpl_i.id
                LEFT JOIN template_inputs_or tio ON tio.or_input_id = tpl_i.id
                LEFT JOIN template_inputs_group_or tigo ON tigo.or_input_group_id = tig.id
@@ -774,6 +1849,7 @@ RETURNING id`;
       'input_name',
       'input_type_id',
       'show_label',
+      'input_visibility',
       'show_quantity',
       'input_entity_id',
       'input_entity_name',
@@ -788,6 +1864,7 @@ RETURNING id`;
       'quantity_option_value',
       'quantity_option_id',
       'template_input_value',
+      'template_blank_input_value',
       'template_quantity_value',
       'quantity_name',
       'template_input_extranote_id',
@@ -797,7 +1874,30 @@ RETURNING id`;
       'extra_note',
       'template_input_quantity_option_id',
       'or_linked_input_id',
-      'or_linked_input_group_id'
+      'or_linked_input_group_id',
+      'font_family',
+      'font_size',
+      'font_weight',
+      'font_style',
+      'text_decoration',
+      'text_color',
+      'background_color',
+      'text_align',
+      'line_height',
+      'letter_spacing',
+      'padding_top',
+      'padding_right',
+      'padding_bottom',
+      'padding_left',
+      'margin_top',
+      'margin_right',
+      'margin_bottom',
+      'margin_left',
+      'border_width',
+      'border_color',
+      'border_radius',
+      'width',
+      'height'
     ].forEach((key) => delete templateData[key]);
 
     const sectionMap: Record<string, any> = {};
@@ -813,7 +1913,7 @@ RETURNING id`;
     };
 
     for (const item of result.rows) {
-      if (!item.section_id) {
+      if (!item.template_section_id) {
         continue;
       }
 
@@ -827,13 +1927,14 @@ RETURNING id`;
         // to the original sections table), not item.template_row_id which is a row ID.
         sectionMap[templateSectionId] = {
           name: item.section_name,
-          sectionOrder: item?.section_order,
+          section_order: item?.section_order,
           template_section_id: item.template_section_id,
           section_id: item.section_id,
           template_id: item.template_id,
           is_header: item.is_header,
           is_body: item.is_body,
           is_footer: item.is_footer,
+          is_visible: item?.is_visible ?? 1,
           rows: [],
         };
 
@@ -895,7 +1996,7 @@ RETURNING id`;
 
         if (column && item.input_id) {
           let inputGroupIndex = column.inputGroup.findIndex((existing: any) => existing.template_input_group_id === item.template_input_group_id);
-          let input = column.inputGroup[inputGroupIndex].inputs.find((existing: any) => existing.input_id === item.input_id);
+          let input = column.inputGroup[inputGroupIndex].inputs.find((existing: any) => existing.template_input_id === item.input_id);
           // FIX Bug 5: guard on the actual field values before constructing the objects.
           // Previously { value: null, id: null } was always truthy, causing null entries
           // to be pushed into dropdown_option_values and quantity_option_values arrays.
@@ -925,6 +2026,7 @@ RETURNING id`;
               item.food = food;
             }
           }
+
           if (!input) {
             input = {
               template_input_id: item.input_id,
@@ -938,6 +2040,7 @@ RETURNING id`;
               input_entity_value: item.input_entity_value,
               input_type_name: item.input_type_name,
               template_input_value: item.template_input_value,
+              template_blank_input_value: item?.template_blank_input_value,
               template_quantity_value: item.template_quantity_value,
               quantity_name: item.quantity_name,
               dropdown_option_value: item.dropdown_option_value,
@@ -946,12 +2049,47 @@ RETURNING id`;
               quantity_option_values: quantityOptionValue ? [quantityOptionValue] : [],
               template_input_extranotes: item.template_input_extranote_note,
               input_order: item.input_order,
-              is_bold: item.is_bold,
-              font_size: item.font_size,
+              style: {
+                font_family: item.font_family,
+                font_size: item.font_size,
+                font_weight: item.font_weight,
+                font_style: item.font_style,
+                text_decoration: item.text_decoration,
+
+                text_color: item.text_color,
+                background_color: item.background_color,
+
+                text_align: item.text_align,
+
+                line_height: item.line_height,
+                letter_spacing: item.letter_spacing,
+
+                padding: {
+                  top: item.padding_top,
+                  right: item.padding_right,
+                  bottom: item.padding_bottom,
+                  left: item.padding_left,
+                },
+
+                margin: {
+                  top: item.margin_top,
+                  right: item.margin_right,
+                  bottom: item.margin_bottom,
+                  left: item.margin_left,
+                },
+
+                border: {
+                  width: item.border_width,
+                  color: item.border_color,
+                  radius: item.border_radius,
+                },
+
+                width: item.width,
+                height: item.height,
+              },
               extra_note: item.extra_note,
               template_input_quantity_option_id: item.template_input_quantity_option_id,
               quantity_option_value: quantity_option_value,
-              isVisible: item?.is_visible ?? 1,
               // FIX Bug 6: renamed from or_input_id to or_linked_input_id and now
               // correctly holds tio.or_input_id (the child/linked input) instead of
               // tio.parent_input_id (which was the current input's own ID — redundant).
@@ -959,7 +2097,8 @@ RETURNING id`;
               recipe_id: item.recipe_id,
               food_id: item.food_id,
               recipe: item.recipe,
-              food: item.food
+              food: item.food,
+              is_visible: item?.input_visibility ?? 1
             };
             column.inputGroup[inputGroupIndex].inputs.push(input);
           } else {

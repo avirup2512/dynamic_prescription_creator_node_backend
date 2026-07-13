@@ -53,6 +53,8 @@ import { recipeTagJoinSchema } from "./recipe schemas/recipeTagMappings";
 import { recipeTagCategorySchema } from "./recipe schemas/recipeTagsCategory";
 import { templateFoodJoinSchema } from "./templateFoodJoin";
 import { templateRecipeJoinSchema } from "./templateRecipeJoin";
+import { templateInputBlankTextValueSchema } from "./templateInputBlankTextValue"
+import { templateInputStyleSchema } from "./templateInputStyleSchema"
 export const schemas = [
   userSchema,
   userPasswordSchema,
@@ -108,5 +110,7 @@ export const schemas = [
   recipeTagSchema,
   recipeTagJoinSchema,
   templateRecipeJoinSchema,
-  templateFoodJoinSchema
+  templateFoodJoinSchema,
+  templateInputBlankTextValueSchema,
+  templateInputStyleSchema
 ];

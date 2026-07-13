@@ -6,6 +6,7 @@ export const templateInputDropdownOptionsSchema = {
   dropdown_option_id UUID NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_template_input_dropdown_option UNIQUE (template_input_id),
   CONSTRAINT fk_template_input_dropdown_option_template_input FOREIGN KEY (template_input_id) REFERENCES template_inputs(id) ON DELETE CASCADE,
   CONSTRAINT fk_template_input_dropdown_option_dropdown_option FOREIGN KEY (dropdown_option_id) REFERENCES dropdown_options(id) ON DELETE RESTRICT
 );`

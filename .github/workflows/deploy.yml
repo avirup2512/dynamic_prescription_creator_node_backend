@@ -18,7 +18,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            cd /srv/react
+            cd /srv/backend-1.2.0
             git pull origin main
             npm ci
             npm run build

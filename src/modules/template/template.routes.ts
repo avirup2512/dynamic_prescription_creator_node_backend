@@ -6,7 +6,7 @@ import { templateCreateSchema, templateUpdateSchema, idParamSchema, paginationSc
 
 const router = express.Router();
 
-router.post("/createDraft", authMiddleware, validateRequest(templateCreateSchema, "body"), TemplateController.createDraftTemplate.bind(TemplateController));
+router.post("/", authMiddleware, validateRequest(templateCreateSchema, "body"), TemplateController.createDraftTemplate.bind(TemplateController));
 router.post("/createsectionandAssign", authMiddleware, validateRequest(templateCreateSchema, "body"), TemplateController.createAndAssignSectionToTemplate.bind(TemplateController));
 router.get("/", authMiddleware, validateRequest(paginationSchema, "query"), TemplateController.getAllTemplates.bind(TemplateController));
 router.get("/:id", authMiddleware, validateRequest(idParamSchema, "params"), TemplateController.getAllTemplateInfoById.bind(TemplateController));

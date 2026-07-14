@@ -40,7 +40,7 @@ class TemplateController extends BaseController<Template> {
     if (!result) {
       return res.status(404).json({ success: false, message: "Template not found" });
     }
-    return res.status(200).json({ success: true, data: result.rows });
+    return res.status(200).json(result);
   }
   async list(req: Request, res: Response) {
     return super.list(req, res);

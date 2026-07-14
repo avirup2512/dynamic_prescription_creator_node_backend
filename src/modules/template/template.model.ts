@@ -2118,21 +2118,45 @@ RETURNING id`;
     return result;
   }
   async getAllTemplates(filters: Record<string, unknown> = {}) {
-    const sql = `SELECT
-      t.*,
-      COALESCE(MAX(ts.is_header), 0)::smallint AS is_header,
-      COALESCE(MAX(ts.is_body), 0)::smallint AS is_body,
-      COALESCE(MAX(ts.is_footer), 0)::smallint AS is_footer,
-      ARRAY_REMOVE(ARRAY_AGG(DISTINCT s.name), NULL) AS section_names
-    FROM templates t
-    LEFT JOIN template_sections ts ON ts.template_id = t.id
-    LEFT JOIN sections s ON s.id = ts.section_id
+    const sql = `SELECT t.* FROM templates t
     WHERE t.created_by = $1 AND t.is_deleted = 0
-    GROUP BY t.id
     ORDER BY t.created_at DESC`;
     const params = [filters.user_id];
     const result = await query<any>(sql, params);
-    return result;
+
+    if (!result.rows || result.rows.length === 0) {
+      return {
+        success: true,
+        data: []
+      };
+    }
+
+    const templates = [];
+    for (const template of result.rows) {
+      const detailResult = await this.getAllTemplateInfoById(template.id, filters);
+
+      if (detailResult.rows && detailResult.rows.length > 0) {
+        const templateDetail = detailResult.rows[0];
+        const response = {
+          id: template.id,
+          name: template.name,
+          show_header: templateDetail.header && templateDetail.header.length > 0,
+          show_body: templateDetail.body && templateDetail.body.length > 0,
+          show_footer: templateDetail.footer && templateDetail.footer.length > 0,
+          header: templateDetail.header || [],
+          body: templateDetail.body || [],
+          footer: templateDetail.footer || [],
+          created_at: template.created_at,
+          updated_at: template.updated_at
+        };
+        templates.push(response);
+      }
+    }
+
+    return {
+      success: true,
+      data: templates
+    };
   }
   async createDraftTemplate(data: any) {
     const sql = `INSERT INTO templates (name, created_by, is_draft) VALUES ($1, $2, 1) RETURNING *`;

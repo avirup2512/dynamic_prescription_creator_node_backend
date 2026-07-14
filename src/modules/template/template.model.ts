@@ -2169,62 +2169,61 @@ RETURNING id`;
     try {
       // SECTION CREATION WITH BLANK ROWS, COLUMNS, INPUT GROUPS STARTS
       await client.query("BEGIN");
-      const sectionName = data.name || "untitled_section";
-      const sectionCreatedBy = data.user_id;
-      const sectionIsDeleted = data.is_deleted ?? 0;
-
-      const sectionInsertQuery = `INSERT INTO sections (name, created_by, is_deleted) VALUES ($1, $2, $3) RETURNING *`;
-      const sectionResult = await client.query(sectionInsertQuery, [sectionName, sectionCreatedBy, sectionIsDeleted]);
-      const insertedSection = sectionResult.rows[0];
-      const rows = Array.isArray(data.rows) ? data.rows : [];
-      const addRowQuery = `INSERT INTO rows (name, row_order) VALUES ($1, $2) RETURNING *`;
-      const rowResult = await client.query(addRowQuery, [rows[0]?.name ?? "untitled_row", rows[0]?.row_order ?? 0]);
-      const insertedRow = rowResult.rows[0];
-      const addSectionRowsQuery = `INSERT INTO section_rows (section_id, row_id) VALUES ($1, $2) RETURNING *`;
-      await client.query(addSectionRowsQuery, [insertedSection.id, insertedRow.id]);
-      const columns = Array.isArray(rows[0]?.column) ? rows[0].column : Array.isArray(rows[0]?.columns) ? rows[0].columns : [];
-      const col = columns[0];
-      const addColumnQuery = `INSERT INTO columns (name, width, column_order) VALUES ($1, $2, $3) RETURNING *`;
-      const columnResult = await client.query(addColumnQuery, [col?.name ?? "untitled_column", Math.ceil(col?.width ?? 100), col?.column_order ?? 0]);
-      const insertedColumn = columnResult.rows[0];
-      const addRowColumnQuery = `INSERT INTO rows_columns (column_id, row_id) VALUES ($1, $2) RETURNING *`;
-      await client.query(addRowColumnQuery, [insertedColumn.id, insertedRow.id]);
-      const inputGroups = Array.isArray(col?.inputGroup) ? col.inputGroup : [];
-      const inputGroup = inputGroups[0];
-      const addInputGroupQuery = `INSERT INTO section_input_groups (column_id, input_group_order) VALUES ($1, $2) RETURNING *`;
-      const inputResult = await client.query(addInputGroupQuery, [insertedColumn.id, inputGroup?.input_group_order ?? 0]);
-      const insertedInputGroup = inputResult.rows[0];
-      const addColumnInputQuery = `INSERT INTO column_inputs_group_join (section_input_group_id, column_id) VALUES ($1, $2) RETURNING *`;
-      await client.query(addColumnInputQuery, [insertedInputGroup.id, insertedColumn.id]);
-      // SECTION CREATION WITH BLANK ROWS, COLUMNS, INPUT GROUPS ENDS
-      const templateId = data.template_id;
-      const addTemplateSectionQuery = `INSERT INTO template_sections (template_id, section_id, is_header, is_body, is_footer, section_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`;
-      const templateSectionResult = await client.query(addTemplateSectionQuery, [templateId, insertedSection.id, data.is_header ?? 0, data.is_body ?? 0, data.is_footer ?? 0, data.section_order ?? 0]);
-      const addTemplateRows = `INSERT INTO template_rows (name, row_order) VALUES ($1, $2) RETURNING *`;
-      const templateRowResult = await client.query(addTemplateRows, [insertedRow.name, insertedRow.row_order]);
-      const insertedTemplateRow = templateRowResult.rows[0];
-      const addTemplateSectionRowsQuery = `INSERT INTO template_section_rows (section_id, row_id) VALUES ($1, $2) RETURNING *`;
-      await client.query(addTemplateSectionRowsQuery, [templateSectionResult.rows[0].id, insertedTemplateRow.id]);
-      const addTemplateColumns = `INSERT INTO template_columns (name, width, column_order) VALUES ($1, $2, $3) RETURNING *`;
-      const templateColumnResult = await client.query(addTemplateColumns, [insertedColumn.name, insertedColumn.width, insertedColumn.column_order]);
-      const insertedTemplateColumn = templateColumnResult.rows[0];
-      const addTemplateRowsColumnsQuery = `INSERT INTO template_rows_columns (row_id, column_id) VALUES ($1, $2) RETURNING *`;
-      await client.query(addTemplateRowsColumnsQuery, [insertedTemplateRow.id, insertedTemplateColumn.id]);
-      const addTemplateInputGroups = `INSERT INTO template_input_groups (template_column_id,input_group_order) VALUES ($1,$2) RETURNING *`;
-      const templateInputGroupResult = await client.query(addTemplateInputGroups, [insertedTemplateColumn.id, insertedInputGroup.input_group_order]);
-      const insertedTemplateInputGroup = templateInputGroupResult.rows[0];
-      const addTemplateColumnInputGroupJoinQuery = `INSERT INTO template_column_input_group_join (column_id, template_input_group_id) VALUES ($1, $2) RETURNING *`;
-      await client.query(addTemplateColumnInputGroupJoinQuery, [insertedTemplateColumn.id, insertedTemplateInputGroup.id]);
+      const sql = `INSERT INTO templates (name, created_by, is_draft) VALUES ($1, $2, 1) RETURNING *`;
+      const params = [data?.templateName, data?.user_id];
+      const result = await query<any>(sql, params);
+      const templateId = result.rows[0].id;
+      for (let x = 0; x < 3; x++) {
+        const sectionName = data.name || "untitled_section";
+        const sectionCreatedBy = data.user_id;
+        const sectionIsDeleted = data.is_deleted ?? 0;
+        const sectionInsertQuery = `INSERT INTO sections (name, created_by, is_deleted) VALUES ($1, $2, $3) RETURNING *`;
+        const sectionResult = await client.query(sectionInsertQuery, [sectionName, sectionCreatedBy, sectionIsDeleted]);
+        const insertedSection = sectionResult.rows[0];
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        const addRowQuery = `INSERT INTO rows (name, row_order) VALUES ($1, $2) RETURNING *`;
+        const rowResult = await client.query(addRowQuery, [rows[0]?.name ?? "untitled_row", rows[0]?.row_order ?? 0]);
+        const insertedRow = rowResult.rows[0];
+        const addSectionRowsQuery = `INSERT INTO section_rows (section_id, row_id) VALUES ($1, $2) RETURNING *`;
+        await client.query(addSectionRowsQuery, [insertedSection.id, insertedRow.id]);
+        const columns = Array.isArray(rows[0]?.column) ? rows[0].column : Array.isArray(rows[0]?.columns) ? rows[0].columns : [];
+        const col = columns[0];
+        const addColumnQuery = `INSERT INTO columns (name, width, column_order) VALUES ($1, $2, $3) RETURNING *`;
+        const columnResult = await client.query(addColumnQuery, [col?.name ?? "untitled_column", Math.ceil(col?.width ?? 100), col?.column_order ?? 0]);
+        const insertedColumn = columnResult.rows[0];
+        const addRowColumnQuery = `INSERT INTO rows_columns (column_id, row_id) VALUES ($1, $2) RETURNING *`;
+        await client.query(addRowColumnQuery, [insertedColumn.id, insertedRow.id]);
+        const inputGroups = Array.isArray(col?.inputGroup) ? col.inputGroup : [];
+        const inputGroup = inputGroups[0];
+        const addInputGroupQuery = `INSERT INTO section_input_groups (column_id, input_group_order) VALUES ($1, $2) RETURNING *`;
+        const inputResult = await client.query(addInputGroupQuery, [insertedColumn.id, inputGroup?.input_group_order ?? 0]);
+        const insertedInputGroup = inputResult.rows[0];
+        const addColumnInputQuery = `INSERT INTO column_inputs_group_join (section_input_group_id, column_id) VALUES ($1, $2) RETURNING *`;
+        await client.query(addColumnInputQuery, [insertedInputGroup.id, insertedColumn.id]);
+        // SECTION CREATION WITH BLANK ROWS, COLUMNS, INPUT GROUPS ENDS
+        // ADDING INITIAL TEMPLATE SECTION STARTS
+        const addTemplateSectionQuery = `INSERT INTO template_sections (template_id, section_id, is_header, is_body, is_footer, section_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`;
+        const templateSectionResult = await client.query(addTemplateSectionQuery, [templateId, insertedSection.id, (x == 0 ? 1 : 0), (x == 1 ? 1 : 0), (x == 2 ? 1 : 0), data.section_order ?? 0]);
+        const addTemplateRows = `INSERT INTO template_rows (name, row_order) VALUES ($1, $2) RETURNING *`;
+        const templateRowResult = await client.query(addTemplateRows, [insertedRow.name, insertedRow.row_order]);
+        const insertedTemplateRow = templateRowResult.rows[0];
+        const addTemplateSectionRowsQuery = `INSERT INTO template_section_rows (section_id, row_id,row_order) VALUES ($1, $2, $3) RETURNING *`;
+        await client.query(addTemplateSectionRowsQuery, [templateSectionResult.rows[0].id, insertedTemplateRow.id, 0]);
+        const addTemplateColumns = `INSERT INTO template_columns (name, width, column_order) VALUES ($1, $2, $3) RETURNING *`;
+        const templateColumnResult = await client.query(addTemplateColumns, [insertedColumn.name, insertedColumn.width, insertedColumn.column_order]);
+        const insertedTemplateColumn = templateColumnResult.rows[0];
+        const addTemplateRowsColumnsQuery = `INSERT INTO template_rows_columns (row_id, column_id) VALUES ($1, $2) RETURNING *`;
+        await client.query(addTemplateRowsColumnsQuery, [insertedTemplateRow.id, insertedTemplateColumn.id]);
+        const addTemplateInputGroups = `INSERT INTO template_input_groups (template_column_id,input_group_order) VALUES ($1,$2) RETURNING *`;
+        const templateInputGroupResult = await client.query(addTemplateInputGroups, [insertedTemplateColumn.id, insertedInputGroup.input_group_order]);
+        const insertedTemplateInputGroup = templateInputGroupResult.rows[0];
+        const addTemplateColumnInputGroupJoinQuery = `INSERT INTO template_column_input_group_join (column_id, template_input_group_id) VALUES ($1, $2) RETURNING *`;
+        await client.query(addTemplateColumnInputGroupJoinQuery, [insertedTemplateColumn.id, insertedTemplateInputGroup.id]);
+        // ADDING INITIAL TEMPLATE SECTION ENDS
+      }
       await client.query("COMMIT");
       return {
-        section: insertedSection,
-        row: insertedRow,
-        column: insertedColumn,
-        inputGroup: insertedInputGroup,
-        templateSection: templateSectionResult.rows[0],
-        templateRow: insertedTemplateRow,
-        templateColumn: insertedTemplateColumn,
-        templateInputGroup: insertedTemplateInputGroup,
+        templateId
       };
     } catch (error) {
       console.log(error)

@@ -9,11 +9,6 @@ class TemplateController extends BaseController<Template> {
   constructor() {
     super(TemplateService);
   }
-
-  async create(req: ExtendedRequest, res: Response) {
-    const service = this.service as typeof TemplateService;
-    return service.createTemplate(req.body);
-  }
   async createTemplate(req: ExtendedRequest, res: Response) {
     const data = req.body?.data;
     data.user_id = req?.user ? req.user.id : null;
@@ -59,7 +54,13 @@ class TemplateController extends BaseController<Template> {
         const result = await service.updateTemplate(id, data);
         return res.status(200).json({ success: true, data: result });
       } catch (error) {
-        return res.status(500).json({ success: false, error: "Failed to update template", details: error instanceof Error ? error.message : error });
+        const message = error instanceof Error ? error.message : String(error);
+        const isRetryableLock = /locked|lock timeout|already in progress/i.test(message);
+        return res.status(isRetryableLock ? 409 : 500).json({
+          success: false,
+          error: isRetryableLock ? "Template update is temporarily locked" : "Failed to update template",
+          details: message,
+        });
       }
     } else {
       return res.status(400).json({ success: false, error: "No data provided for update" });

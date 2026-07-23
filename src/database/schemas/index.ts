@@ -28,7 +28,7 @@ import { templateInputsQuantityValueSchema } from "./templateInputsQuantityValue
 import { templateSectionRowSchema } from "./templateSectionRow";
 import { templateRowsColumnSchema } from "./templateRowsColumn";
 import { renderedOutputSchema } from "./renderedOutput";
-import { templateInputOrSchema } from "./templateInputOr";
+import { templateInputConditionSchema } from "./templateInputCondition";
 import { templateInputAndSchema } from "./templateInputAnd";
 import { globalDropdownEntityOptionsSchema } from "./globalDropdownEntityOptions";
 import { globalDropdownEntities } from "./globalDropdownEntities";
@@ -39,7 +39,7 @@ import { templateInputGroupJoinSchema } from "./templateInputGroupJoin";
 import { sectionInputGroupSchema } from "./sectionInputGroup";
 import { sectionInputGroupJoinSchema } from "./sectionInputGroupJoin";
 import { templateColumnInputGroupJoinSchema } from "./templateColumnInputGroupJoin";
-import { templateInputGroupOrSchema } from "./templateInputGroupOr";
+import { templateInputGroupConditionSchema } from "./templateInputGroupCondition";
 import { foodCategorySchema } from "./food schemas/foodCategorySchema";
 import { foodSchema } from "./food schemas/foodSchema";
 import { foodAliasSchema } from "./food schemas/foodAliasSchema";
@@ -55,6 +55,8 @@ import { templateFoodJoinSchema } from "./templateFoodJoin";
 import { templateRecipeJoinSchema } from "./templateRecipeJoin";
 import { templateInputBlankTextValueSchema } from "./templateInputBlankTextValue"
 import { templateInputStyleSchema } from "./templateInputStyleSchema"
+import { inputConditionSchema } from "./inputCondition";
+import { templateInputQuantitySchema } from "./templateInputQuantity";
 export const schemas = [
   userSchema,
   userPasswordSchema,
@@ -86,7 +88,7 @@ export const schemas = [
   templateSectionRowSchema,
   templateRowsColumnSchema,
   renderedOutputSchema,
-  templateInputOrSchema,
+  templateInputConditionSchema,
   templateInputAndSchema,
   globalDropdownEntities,
   globalDropdownOptionSchema,
@@ -97,7 +99,7 @@ export const schemas = [
   templateColumnInputGroupJoinSchema,
   sectionInputGroupSchema,
   sectionInputGroupJoinSchema,
-  templateInputGroupOrSchema,
+  templateInputGroupConditionSchema,
   foodCategorySchema,
   foodSchema,
   foodAliasSchema,
@@ -112,5 +114,7 @@ export const schemas = [
   templateRecipeJoinSchema,
   templateFoodJoinSchema,
   templateInputBlankTextValueSchema,
-  templateInputStyleSchema
+  templateInputStyleSchema,
+  inputConditionSchema,
+  templateInputQuantitySchema
 ];

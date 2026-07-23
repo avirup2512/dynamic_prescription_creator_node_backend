@@ -5,6 +5,7 @@ export const templateRowSchema = {
   name VARCHAR(255) NOT NULL,
   is_deleted SMALLINT NOT NULL DEFAULT 0,
   row_order INTEGER NOT NULL DEFAULT 0,
+  is_visible SMALLINT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );`

@@ -6,6 +6,7 @@ export const templateInputSchema = {
   label VARCHAR(255) NOT NULL,
   show_label SMALLINT NOT NULL DEFAULT 1,
   show_quantity SMALLINT NOT NULL DEFAULT 0,
+  is_quantity_type_single SMALLINT NOT NULL DEFAULT 1,
   is_bold SMALLINT NOT NULL DEFAULT 0,
   font_size INTEGER NOT NULL DEFAULT 14,
   extra_note SMALLINT NOT NULL DEFAULT 0,

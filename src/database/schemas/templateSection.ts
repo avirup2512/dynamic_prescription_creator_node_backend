@@ -3,7 +3,7 @@ export const templateSectionSchema = {
   createStatement: `CREATE TABLE IF NOT EXISTS template_sections (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   template_id UUID NOT NULL,
-  section_id UUID NOT NULL,
+  section_id UUID,
   section_order INTEGER NOT NULL DEFAULT 0,
   is_header SMALLINT NOT NULL DEFAULT 0,
   is_body SMALLINT NOT NULL DEFAULT 0,

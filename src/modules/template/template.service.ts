@@ -8,7 +8,7 @@ export class TemplateService extends BaseService<Template> {
   }
   async createTemplate(data: Partial<any>) {
     const model = this.model as TemplateModel;
-    return model.createTemplate(data);
+    return model.createDraftTemplate(data);
   }
   async createDraftTemplate(data: Partial<any>) {
     const model = this.model as TemplateModel;
